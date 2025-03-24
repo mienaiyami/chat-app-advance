@@ -1,7 +1,11 @@
 {
-  "eslint.workingDirectories": [
-    {
-      "mode": "auto"
-    }
-  ]
+    // "editor.defaultFormatter": "biomejs.biome",
+    // "editor.formatOnSave": true,
+    // "editor.codeActionsOnSave": {
+    //     "source.fixAll": "explicit",
+    //     "source.organizeImports": "explicit"
+    // },
+    // "[yaml]": {
+    //     "editor.defaultFormatter": "esbenp.prettier-vscode"
+    // }
 }

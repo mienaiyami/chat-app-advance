@@ -1,0 +1,28 @@
+{
+    "name": "@repo/database",
+    "version": "1.0.0",
+    "exports": {
+        ".": "./src/index.ts",
+        "./schema": "./src/schema.ts"
+    },
+    "scripts": {
+        "format-and-lint": "biome check ./src",
+        "format-and-lint:fix": "biome check --write ./src",
+        "with-env": "dotenv -e ../../.env --",
+        "db:migrate": "pnpm with-env tsx scripts/migration.ts",
+        "db:studio": "pnpm with-env drizzle-kit studio",
+        "db:generate": "pnpm with-env drizzle-kit generate"
+    },
+    "dependencies": {
+        "postgres": "^3.4.4",
+        "drizzle-orm": "^0.41.0",
+        "next-auth": "5.0.0-beta.25"
+    },
+    "devDependencies": {
+        "@repo/typescript-config": "workspace:*",
+        "@types/bcrypt": "^5.0.2",
+        "@types/pg": "^8.11.10",
+        "dotenv-cli": "^8.0.0",
+        "drizzle-kit": "^0.30.5"
+    }
+}

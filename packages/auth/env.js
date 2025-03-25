@@ -19,6 +19,8 @@ export const env = createEnv({
         NODE_ENV: z
             .enum(["development", "test", "production"])
             .default("development"),
+        SOCKET_PORT: z.string().transform((val) => Number.parseInt(val, 10)),
+        SOCKET_HOST: z.string().default("0.0.0.0"),
     },
 
     /**
@@ -28,6 +30,7 @@ export const env = createEnv({
      */
     client: {
         // NEXT_PUBLIC_CLIENTVAR: z.string(),
+        NEXT_PUBLIC_SOCKET_URL: z.string(),
     },
 
     /**
@@ -40,6 +43,9 @@ export const env = createEnv({
         GITHUB_CLIENT_SECRET: process.env.GITHUB_CLIENT_SECRET,
         DATABASE_URL: process.env.DATABASE_URL,
         NODE_ENV: process.env.NODE_ENV,
+        SOCKET_PORT: process.env.SOCKET_PORT,
+        SOCKET_HOST: process.env.SOCKET_HOST,
+        NEXT_PUBLIC_SOCKET_URL: process.env.NEXT_PUBLIC_SOCKET_URL,
     },
     /**
      * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially

@@ -1,0 +1,36 @@
+{
+    "name": "socket",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "dev": "pnpm with-env tsx watch src/index.ts",
+        "build": "pnpm with-env tsc --outDir dist --target es2022 --entry src/index.ts",
+        "start": "pnpm with-env node dist/index.js",
+        "format-and-lint": "biome check ./src",
+        "format-and-lint:fix": "biome check --write ./src",
+        "with-env": "dotenv -e ../../.env --",
+        "typecheck": "tsc --noEmit",
+        "clean": "rm -rf .turbo node_modules"
+    },
+    "dependencies": {
+        "@repo/api": "workspace:*",
+        "@repo/auth": "workspace:*",
+        "@repo/database": "workspace:*",
+        "@trpc/server": "^11.0.0",
+        "cors": "^2.8.5",
+        "express": "^4.21.2",
+        "socket.io": "^4.8.1",
+        "superjson": "^2.2.2",
+        "tsx": "^4.19.1",
+        "zod": "^3.24.2"
+    },
+    "devDependencies": {
+        "@repo/typescript-config": "workspace:*",
+        "@types/cors": "^2.8.17",
+        "@types/express": "^5.0.0",
+        "@types/node": "^22.10.0",
+        "dotenv-cli": "^8.0.0",
+        "typescript": "^5.8.2"
+    }
+}

@@ -3,8 +3,7 @@
 import { useSession } from "next-auth/react";
 import { useCallback, useEffect, useState } from "react";
 import { useSocket } from "~/components";
-import { api } from "~/trpc/react";
-import type { RouterOutputs } from "~/trpc/shared";
+import { api, type RouterOutputs } from "~/trpc/react";
 
 export type Message = RouterOutputs["message"]["sendMessage"];
 export type TypingStatus = Record<string, boolean>;
@@ -60,7 +59,7 @@ export function useConversationSocket(
     useEffect(() => {
         if (!socketHook.socket || !conversationId) return;
 
-        const handleNewMessage = (newMessage: any) => {
+        const handleNewMessage = (newMessage: Message) => {
             if (newMessage.conversationId === conversationId) {
                 setMessages((prevMessages) => [...prevMessages, newMessage]);
                 utils.message.getMessages.invalidate({ conversationId });

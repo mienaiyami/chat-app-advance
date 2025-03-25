@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
-import { api } from "~/trpc/react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { api } from "~/trpc/react";
 
 export default function ProfilePage() {
     const { data: session, status } = useSession();
@@ -17,24 +17,21 @@ export default function ProfilePage() {
             enabled: status === "authenticated",
         });
 
-    // Handle sign out
     const handleSignOut = async () => {
         setIsLoading(true);
         await signOut({ redirect: false });
         router.push("/");
     };
 
-    // If not authenticated, redirect to sign in
     if (status === "unauthenticated") {
         router.push("/auth/signin");
         return null;
     }
 
-    // Show loading state
     if (status === "loading" || isUserLoading) {
         return (
             <div className="flex min-h-screen flex-col items-center justify-center">
-                <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-t-2 border-blue-500"></div>
+                <div className="h-8 w-8 animate-spin rounded-full border-blue-500 border-t-2 border-b-2"></div>
                 <p className="mt-4 text-gray-600 dark:text-gray-300">
                     Loading profile...
                 </p>
@@ -51,10 +48,10 @@ export default function ProfilePage() {
                 >
                     &larr; Back to Dashboard
                 </Link>
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+                <h1 className="font-bold text-2xl text-gray-900 dark:text-white">
                     Your Profile
                 </h1>
-                <div className="w-24"></div> {/* Empty div for spacing */}
+                <div className="w-24"></div>
             </header>
 
             <main className="flex flex-1 flex-col items-center p-6">
@@ -63,7 +60,7 @@ export default function ProfilePage() {
                     <div className="mb-8 flex flex-col items-center">
                         <div className="relative mb-4 h-24 w-24 overflow-hidden rounded-full">
                             {session?.user?.image ? (
-                                <Image
+                                <img
                                     src={session.user.image}
                                     alt={session.user.name || "User"}
                                     width={96}
@@ -71,12 +68,12 @@ export default function ProfilePage() {
                                     className="h-full w-full object-cover"
                                 />
                             ) : (
-                                <div className="flex h-full w-full items-center justify-center bg-blue-100 text-2xl font-bold text-blue-600 dark:bg-blue-900 dark:text-blue-200">
+                                <div className="flex h-full w-full items-center justify-center bg-blue-100 font-bold text-2xl text-blue-600 dark:bg-blue-900 dark:text-blue-200">
                                     {session?.user?.name?.charAt(0) || "U"}
                                 </div>
                             )}
                         </div>
-                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                        <h2 className="font-bold text-2xl text-gray-900 dark:text-white">
                             {session?.user?.name}
                         </h2>
                         <p className="text-gray-600 dark:text-gray-300">
@@ -86,7 +83,7 @@ export default function ProfilePage() {
 
                     {/* User settings */}
                     <div className="mb-8 rounded-md border border-gray-200 p-4 dark:border-gray-700">
-                        <h3 className="mb-4 text-xl font-semibold text-gray-900 dark:text-white">
+                        <h3 className="mb-4 font-semibold text-gray-900 text-xl dark:text-white">
                             Settings
                         </h3>
 
@@ -96,7 +93,7 @@ export default function ProfilePage() {
                                     <span className="text-gray-700 dark:text-gray-300">
                                         Theme
                                     </span>
-                                    <span className="rounded-full bg-gray-100 px-3 py-1 text-sm font-medium text-gray-800 dark:bg-gray-700 dark:text-gray-200">
+                                    <span className="rounded-full bg-gray-100 px-3 py-1 font-medium text-gray-800 text-sm dark:bg-gray-700 dark:text-gray-200">
                                         {userData.settings.theme || "Light"}
                                     </span>
                                 </div>
@@ -105,7 +102,7 @@ export default function ProfilePage() {
                                         Notifications
                                     </span>
                                     <span
-                                        className={`rounded-full px-3 py-1 text-sm font-medium ${
+                                        className={`rounded-full px-3 py-1 font-medium text-sm ${
                                             userData.settings.notifications
                                                 ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
                                                 : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
@@ -121,7 +118,7 @@ export default function ProfilePage() {
                                         Sound
                                     </span>
                                     <span
-                                        className={`rounded-full px-3 py-1 text-sm font-medium ${
+                                        className={`rounded-full px-3 py-1 font-medium text-sm ${
                                             userData.settings.soundEnabled
                                                 ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
                                                 : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
@@ -136,7 +133,7 @@ export default function ProfilePage() {
                                     <span className="text-gray-700 dark:text-gray-300">
                                         Language
                                     </span>
-                                    <span className="rounded-full bg-gray-100 px-3 py-1 text-sm font-medium text-gray-800 dark:bg-gray-700 dark:text-gray-200">
+                                    <span className="rounded-full bg-gray-100 px-3 py-1 font-medium text-gray-800 text-sm dark:bg-gray-700 dark:text-gray-200">
                                         {userData.settings.language ||
                                             "English"}
                                     </span>

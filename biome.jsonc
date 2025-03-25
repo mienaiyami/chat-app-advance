@@ -26,7 +26,7 @@
                 "useButtonType": "off"
             },
             "style": {
-                "useSelfClosingElements": "info"
+                "useSelfClosingElements": "off"
             },
             "correctness": {
                 "useExhaustiveDependencies": "warn"

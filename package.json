@@ -9,7 +9,8 @@
     "db:migrate": "turbo db:migrate",
     "db:studio": "turbo db:studio",
     "db:generate": "turbo db:generate",
-    "typecheck": "turbo typecheck"
+    "typecheck": "turbo typecheck",
+    "clean": "rm -rf .turbo node_modules"
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",

@@ -11,7 +11,8 @@
 		"format-and-lint:fix": "biome check --write ./src",
 		"with-env": "dotenv -e ../../.env --",
 		"preview": "pnpm with-env next build && pnpm with-env next start",
-		"typecheck": "tsc --noEmit"
+		"typecheck": "tsc --noEmit",
+		"clean": "rm -rf .turbo node_modules"
 	},
 	"dependencies": {
 		"@tanstack/react-query": "^5.69.0",

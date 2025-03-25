@@ -11,7 +11,8 @@
         "with-env": "dotenv -e ../../.env --",
         "db:migrate": "pnpm with-env tsx scripts/migration.ts",
         "db:studio": "pnpm with-env drizzle-kit studio",
-        "db:generate": "pnpm with-env drizzle-kit generate"
+        "db:generate": "pnpm with-env drizzle-kit generate",
+        "clean": "rm -rf .turbo node_modules"
     },
     "dependencies": {
         "postgres": "^3.4.4",

@@ -1,7 +1,9 @@
 import { DrizzleAdapter } from "@auth/drizzle-adapter";
 import type { DefaultSession, NextAuthConfig } from "next-auth";
 import GithubProvider from "next-auth/providers/github";
-import { db } from "@repo/database";
+import GoogleProvider from "next-auth/providers/google";
+import CredentialsProvider from "next-auth/providers/credentials";
+import { db, eq } from "@repo/database";
 import { accounts, sessions, users, verificationTokens } from "@repo/database";
 import { env } from "./env";
 
@@ -27,26 +29,64 @@ declare module "next-auth" {
     // }
 }
 
+const isDev = process.env.NODE_ENV === "development";
+
 /**
  * Options for NextAuth.js used to configure adapters, providers, callbacks, etc.
  *
  * @see https://next-auth.js.org/configuration/options
  */
 export const authConfig: NextAuthConfig = {
+    // debug: isDev,
+    session: {
+        strategy: "jwt",
+    },
+    pages: {
+        signIn: "/auth/signin",
+        signOut: "/auth/signout",
+        error: "/auth/error",
+    },
     providers: [
+        // DiscordProvider
         GithubProvider({
             clientId: env.GITHUB_CLIENT_ID,
             clientSecret: env.GITHUB_CLIENT_SECRET,
         }),
-        /**
-         * ...add more providers here.
-         *
-         * Most other providers require a bit more work than the Discord provider. For example, the
-         * GitHub provider requires you to add the `refresh_token_expires_in` field to the Account
-         * model. Refer to the NextAuth.js docs for the provider you want to use. Example:
-         *
-         * @see https://next-auth.js.org/providers/github
-         */
+        GoogleProvider({
+            clientId: env.GOOGLE_CLIENT_ID,
+            clientSecret: env.GOOGLE_CLIENT_SECRET,
+        }),
+        ...(isDev
+            ? [
+                  CredentialsProvider({
+                      name: "Mock Credentials",
+                      credentials: {
+                          email: {
+                              label: "Email",
+                              type: "email",
+                              placeholder: "mock@example.com",
+                          },
+                      },
+                      async authorize(credentials) {
+                          if (!credentials?.email) {
+                              return null;
+                          }
+
+                          const user = await db.query.users.findFirst({
+                              where: eq(
+                                  users.email,
+                                  credentials.email as string
+                              ),
+                          });
+
+                          if (!user?.id.startsWith("mock-")) {
+                              return null;
+                          }
+                          return user;
+                      },
+                  }),
+              ]
+            : []),
     ],
     adapter: DrizzleAdapter(db, {
         usersTable: users,
@@ -55,12 +95,33 @@ export const authConfig: NextAuthConfig = {
         verificationTokensTable: verificationTokens,
     }),
     callbacks: {
-        session: ({ session, user }) => ({
-            ...session,
-            user: {
-                ...session.user,
-                id: user.id,
-            },
-        }),
+        session: async ({ session, token }) => {
+            // token.sub is the user id
+            if (!token.sub) {
+                return session;
+            }
+            return {
+                ...session,
+                user: {
+                    ...session.user,
+                    id: token.sub,
+                },
+            };
+        },
+        signIn: async ({ user }) => {
+            if (!user?.id) {
+                return false;
+            }
+            // const existingRole = await db.query.userRoles.findMany({
+            //     where: eq(userRoles.userId, user.id),
+            // });
+            // if (existingRole.length === 0) {
+            //     await db.insert(userRoles).values({
+            //         role: "student",
+            //         userId: user.id,
+            //     });
+            // }
+            return true;
+        },
     },
 };

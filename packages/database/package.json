@@ -13,6 +13,8 @@
         "db:migrate": "pnpm with-env tsx scripts/migration.ts",
         "db:studio": "pnpm with-env drizzle-kit studio",
         "db:generate": "pnpm with-env drizzle-kit generate",
+        "db:seed-mock-users": "pnpm with-env tsx scripts/seed-mock-users.ts",
+        "db:list-mock-users": "pnpm with-env tsx scripts/list-mock-users.ts",
         "clean": "rm -rf .turbo node_modules"
     },
     "dependencies": {

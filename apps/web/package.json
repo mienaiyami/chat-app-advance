@@ -15,9 +15,15 @@
 		"clean": "rm -rf .turbo node_modules"
 	},
 	"dependencies": {
+		"@hookform/resolvers": "^5.0.1",
+		"@radix-ui/react-checkbox": "^1.2.0",
 		"@radix-ui/react-dialog": "^1.1.6",
 		"@radix-ui/react-dropdown-menu": "^2.1.6",
+		"@radix-ui/react-label": "^2.1.4",
+		"@radix-ui/react-progress": "^1.1.4",
+		"@radix-ui/react-separator": "^1.1.4",
 		"@radix-ui/react-slot": "^1.1.2",
+		"@radix-ui/react-tabs": "^1.1.5",
 		"@repo/api": "workspace:*",
 		"@repo/auth": "workspace:*",
 		"@repo/database": "workspace:*",
@@ -34,6 +40,7 @@
 		"next-themes": "^0.4.6",
 		"react": "^19.0.0",
 		"react-dom": "^19.0.0",
+		"react-hook-form": "^7.55.0",
 		"server-only": "^0.0.1",
 		"socket.io": "^4.8.1",
 		"socket.io-client": "^4.8.1",

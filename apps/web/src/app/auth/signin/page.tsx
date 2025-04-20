@@ -1,204 +1,198 @@
 "use client";
 
-import { signIn } from "next-auth/react";
+import { AlertCircle, ArrowLeft, Github } from "lucide-react";
+import { getProviders, signIn } from "next-auth/react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert";
+import { Button } from "~/components/ui/button";
+import {
+	Card,
+	CardContent,
+	CardDescription,
+	CardFooter,
+	CardHeader,
+	CardTitle,
+} from "~/components/ui/card";
+import { Input } from "~/components/ui/input";
 
-export default function SignIn() {
-	const router = useRouter();
+type Provider = {
+	id: string;
+	name: string;
+	type: string;
+	signinUrl: string;
+	callbackUrl: string;
+};
+
+type Providers = Record<string, Provider> | null;
+
+const errorMessages: Record<string, string> = {
+	OAuthSignin: "Error signing in with OAuth provider.",
+	OAuthCallback: "Error during OAuth callback.",
+	OAuthCreateAccount: "Error creating OAuth provider user.",
+	EmailCreateAccount: "Error creating email provider user.",
+	Callback: "Error in the OAuth callback handler.",
+	OAuthAccountNotLinked: "Email already associated with another provider.",
+	EmailSignin: "Error sending email verification.",
+	CredentialsSignin: "Invalid email or password.",
+	SessionRequired: "You must be signed in to access this page.",
+	Default: "An error occurred during authentication.",
+};
+
+export default function SignInPage() {
 	const [email, setEmail] = useState("");
-	const [password, setPassword] = useState("");
-	const [error, setError] = useState("");
 	const [isLoading, setIsLoading] = useState(false);
+	const [providers, setProviders] = useState<Providers>(null);
+	const searchParams = useSearchParams();
+	const error = searchParams?.get("error");
+	const callbackUrl = searchParams?.get("callbackUrl") || "/dashboard";
 
-	const handleSubmit = async (e: React.FormEvent) => {
+	useEffect(() => {
+		const fetchProviders = async () => {
+			const fetchedProviders = await getProviders();
+			setProviders(fetchedProviders);
+		};
+
+		void fetchProviders();
+	}, []);
+
+	const handleEmailSignIn = async (e: React.FormEvent) => {
 		e.preventDefault();
-		setError("");
 		setIsLoading(true);
 
 		try {
-			const result = await signIn("credentials", {
-				// redirect: false,
-				email,
-				password,
-			});
-
-			if (result?.error) {
-				setError(result.error);
-				setIsLoading(false);
-				return;
-			}
-
-			// router.push("/dashboard");
-		} catch (err) {
-			setError("Something went wrong. Please try again.");
+			await signIn("credentials", { email, callbackUrl });
+		} catch (error) {
+			console.error("Sign in error:", error);
+		} finally {
 			setIsLoading(false);
 		}
 	};
 
+	const handleProviderSignIn = (providerId: string) => {
+		setIsLoading(true);
+		void signIn(providerId, { callbackUrl });
+	};
+
 	return (
-		<div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-gray-50 to-gray-100 p-6 dark:from-gray-900 dark:to-gray-800">
-			<div className="w-full max-w-md rounded-lg bg-white p-8 shadow-lg dark:bg-gray-800">
-				<div className="mb-6 text-center">
-					<h1 className="font-bold text-3xl text-gray-900 dark:text-white">
-						Sign In
-					</h1>
-					<p className="mt-2 text-gray-600 dark:text-gray-300">
-						Welcome back! Please sign in to your account.
-					</p>
-				</div>
+		<div className="container mx-auto flex h-screen w-screen flex-col items-center justify-center">
+			<Link
+				href="/"
+				className="absolute top-8 left-8 flex items-center gap-2 py-2 font-medium text-lg transition-colors hover:text-primary"
+			>
+				<ArrowLeft className="h-4 w-4" />
+				Back to Home
+			</Link>
 
-				{error && (
-					<div className="mb-4 rounded-md bg-red-50 p-4 text-red-700 text-sm dark:bg-red-900/30 dark:text-red-400">
-						{error}
-					</div>
-				)}
+			<Card className="mx-auto w-full max-w-md">
+				<CardHeader className="space-y-1 text-center">
+					<CardTitle className="font-bold text-2xl">Sign in</CardTitle>
+					<CardDescription>
+						Choose your preferred sign in method
+					</CardDescription>
+				</CardHeader>
 
-				<form onSubmit={handleSubmit} className="space-y-6">
-					<div>
-						<label
-							htmlFor="email"
-							className="block font-medium text-gray-700 text-sm dark:text-gray-300"
-						>
-							Email address
-						</label>
-						<input
-							id="email"
-							name="email"
-							type="email"
-							autoComplete="email"
-							required
-							value={email}
-							onChange={(e) => setEmail(e.target.value)}
-							className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:border-blue-500"
-							placeholder="Email"
-						/>
-					</div>
+				<CardContent className="space-y-2">
+					{error && (
+						<Alert variant="destructive" className="mb-4">
+							<AlertCircle className="h-4 w-4" />
+							<AlertTitle>Error</AlertTitle>
+							<AlertDescription>
+								{errorMessages[error] || errorMessages.Default}
+							</AlertDescription>
+						</Alert>
+					)}
 
-					<div>
-						<label
-							htmlFor="password"
-							className="block font-medium text-gray-700 text-sm dark:text-gray-300"
-						>
-							Password
-						</label>
-						<input
-							id="password"
-							name="password"
-							type="password"
-							autoComplete="current-password"
-							required
-							value={password}
-							onChange={(e) => setPassword(e.target.value)}
-							className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:border-blue-500"
-							placeholder="Password"
-						/>
-					</div>
-
-					<div className="flex items-center justify-between">
-						<div className="flex items-center">
-							<input
-								id="remember-me"
-								name="remember-me"
-								type="checkbox"
-								className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:focus:ring-blue-600"
-							/>
-							<label
-								htmlFor="remember-me"
-								className="ml-2 block text-gray-700 text-sm dark:text-gray-300"
-							>
-								Remember me
-							</label>
-						</div>
-
-						<div className="text-sm">
-							<Link
-								href="/auth/forgot-password"
-								className="font-medium text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300"
-							>
-								Forgot your password?
-							</Link>
-						</div>
-					</div>
-
-					<div>
-						<button
-							type="submit"
+					{providers?.github && (
+						<Button
+							variant="outline"
+							className="w-full"
+							onClick={() => handleProviderSignIn("github")}
 							disabled={isLoading}
-							className="flex w-full justify-center rounded-md bg-blue-600 px-4 py-2 font-medium text-sm text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
 						>
-							{isLoading ? "Signing in..." : "Sign in"}
-						</button>
-					</div>
-				</form>
+							<Github className="h-4 w-4" />
+							Sign in with GitHub
+						</Button>
+					)}
 
-				<div className="mt-6">
-					<div className="relative">
-						<div className="absolute inset-0 flex items-center">
-							<div className="w-full border-gray-300 border-t dark:border-gray-600">
-								{}
+					{providers?.google && (
+						<Button
+							variant="outline"
+							className="w-full"
+							onClick={() => handleProviderSignIn("google")}
+							disabled={isLoading}
+						>
+							<svg
+								role="img"
+								xmlns="http://www.w3.org/2000/svg"
+								viewBox="0 0 128 128"
+							>
+								<path
+									fill="currentColor"
+									d="M44.59 4.21a63.28 63.28 0 0 0 4.33 120.9a67.6 67.6 0 0 0 32.36.35a57.13 57.13 0 0 0 25.9-13.46a57.44 57.44 0 0 0 16-26.26a74.33 74.33 0 0 0 1.61-33.58H65.27v24.69h34.47a29.72 29.72 0 0 1-12.66 19.52a36.16 36.16 0 0 1-13.93 5.5a41.29 41.29 0 0 1-15.1 0A37.16 37.16 0 0 1 44 95.74a39.3 39.3 0 0 1-14.5-19.42a38.31 38.31 0 0 1 0-24.63a39.25 39.25 0 0 1 9.18-14.91A37.17 37.17 0 0 1 76.13 27a34.28 34.28 0 0 1 13.64 8q5.83-5.8 11.64-11.63c2-2.09 4.18-4.08 6.15-6.22A61.22 61.22 0 0 0 87.2 4.59a64 64 0 0 0-42.61-.38"
+								/>
+							</svg>
+							Sign in with Google
+						</Button>
+					)}
+
+					{process.env.NODE_ENV === "development" && providers?.credentials && (
+						<>
+							<div className="relative">
+								<div className="absolute inset-0 flex items-center">
+									<span className="w-full border-t" />
+								</div>
+								<div className="relative flex justify-center text-xs uppercase">
+									<span className="bg-card px-2 text-muted-foreground">
+										Or continue with
+									</span>
+								</div>
 							</div>
-						</div>
-						<div className="relative flex justify-center text-sm">
-							<span className="bg-white px-2 text-gray-500 dark:bg-gray-800 dark:text-gray-400">
-								Or continue with
-							</span>
-						</div>
-					</div>
 
-					<div className="mt-6 grid grid-cols-2 gap-3">
-						<button
-							onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
-							className="flex items-center justify-center gap-3 rounded-md border border-gray-300 bg-white px-4 py-2 font-medium text-gray-700 text-sm shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+							<form onSubmit={handleEmailSignIn} className="space-y-2">
+								<Input
+									id="email"
+									type="email"
+									placeholder="mocked@example.com"
+									value={email}
+									onChange={(e) => setEmail(e.target.value)}
+									required
+									disabled={isLoading}
+								/>
+
+								<Button
+									variant="outline"
+									className="w-full"
+									type="submit"
+									disabled={isLoading}
+								>
+									Sign in with Mock Credentials
+								</Button>
+							</form>
+						</>
+					)}
+				</CardContent>
+
+				<CardFooter className="flex flex-col space-y-2">
+					<p className="mt-2 text-center text-muted-foreground text-sm">
+						By signing in, you agree to our{" "}
+						<Link
+							href="/terms"
+							className="underline underline-offset-2 hover:text-primary"
 						>
-							<svg className="h-5 w-5" viewBox="0 0 24 24">
-								<path
-									d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-									fill="#4285F4"
-								/>
-								<path
-									d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-									fill="#34A853"
-								/>
-								<path
-									d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-									fill="#FBBC05"
-								/>
-								<path
-									d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-									fill="#EA4335"
-								/>
-							</svg>
-							Google
-						</button>
-
-						<button
-							onClick={() => signIn("github", { callbackUrl: "/dashboard" })}
-							className="flex items-center justify-center gap-3 rounded-md border border-gray-300 bg-white px-4 py-2 font-medium text-gray-700 text-sm shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+							Terms of Service
+						</Link>{" "}
+						and{" "}
+						<Link
+							href="/privacy"
+							className="whitespace-nowrap underline underline-offset-2 hover:text-primary"
 						>
-							<svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-								<path
-									fillRule="evenodd"
-									d="M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z"
-									clipRule="evenodd"
-								/>
-							</svg>
-							GitHub
-						</button>
-					</div>
-				</div>
-
-				<p className="mt-8 text-center text-gray-600 text-sm dark:text-gray-400">
-					Don't have an account?{" "}
-					<Link
-						href="/auth/signup"
-						className="font-medium text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300"
-					>
-						Sign up
-					</Link>
-				</p>
-			</div>
+							Privacy Policy
+						</Link>
+					</p>
+				</CardFooter>
+			</Card>
 		</div>
 	);
 }

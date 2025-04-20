@@ -21,6 +21,9 @@ export const env = createEnv({
             .default("development"),
         SOCKET_PORT: z.string().transform((val) => Number.parseInt(val, 10)),
         SOCKET_HOST: z.string().default("0.0.0.0"),
+        GOOGLE_CLIENT_ID: z.string(),
+        GOOGLE_CLIENT_SECRET: z.string(),
+        UPLOADTHING_TOKEN: z.string(),
     },
 
     /**
@@ -46,6 +49,9 @@ export const env = createEnv({
         SOCKET_PORT: process.env.SOCKET_PORT,
         SOCKET_HOST: process.env.SOCKET_HOST,
         NEXT_PUBLIC_SOCKET_URL: process.env.NEXT_PUBLIC_SOCKET_URL,
+        GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
+        GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+        UPLOADTHING_TOKEN: process.env.UPLOADTHING_TOKEN,
     },
     /**
      * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially

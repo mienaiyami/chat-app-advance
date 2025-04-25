@@ -1,146 +1,105 @@
 "use client";
 
-import { useSession } from "next-auth/react";
 import { createContext, useContext, useEffect, useState } from "react";
-import { type Socket, io } from "socket.io-client";
-import { env } from "~/env";
+import { io, type Socket } from "socket.io-client";
+import { toast } from "sonner";
+import { useSession } from "next-auth/react";
 
 type SocketContextType = {
-	socket: Socket | null;
-	isConnected: boolean;
-	joinChat: (chatId: string) => void;
-	leaveChat: (chatId: string) => void;
-	joinGroup: (groupId: string) => void;
-	leaveGroup: (groupId: string) => void;
-	sendChatTyping: (chatId: string, isTyping: boolean) => void;
-	sendGroupTyping: (groupId: string, isTyping: boolean) => void;
+    socket: Socket | null;
+    isConnected: boolean;
+    onlineUsers: Set<string>;
+    typingUsers: Set<string>;
 };
 
-const SocketContext = createContext<SocketContextType>({
-	socket: null,
-	isConnected: false,
-	joinChat: () => {},
-	leaveChat: () => {},
-	joinGroup: () => {},
-	leaveGroup: () => {},
-	sendChatTyping: () => {},
-	sendGroupTyping: () => {},
-});
+const SocketContext = createContext<SocketContextType | null>(null);
 
-export const useSocket = () => useContext(SocketContext);
+export function SocketProvider({ children }: { children: React.ReactNode }) {
+    const [socket, setSocket] = useState<Socket | null>(null);
+    const [isConnected, setIsConnected] = useState(false);
+    const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+    const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
+    const { data: session } = useSession();
 
-const tempSocketUrl = "http://localhost:3001";
+    useEffect(() => {
+        if (!session) {
+            console.log("No session found, cannot connect to socket");
+            return;
+        }
 
-export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
-	const [socket, setSocket] = useState<Socket | null>(null);
-	const { data: session } = useSession();
-	useEffect(() => {
-		console.log({
-			test: env.NEXT_PUBLIC_SOCKET_URL,
-		});
-		if (!session?.user?.id) {
-			if (socket) {
-				socket.disconnect();
-				setSocket(null);
-			}
-			return;
-		}
-		if (!socket) {
-			const socketInstance = io(tempSocketUrl, {
-				auth: {
-					token: session.sessionToken,
-				},
-				autoConnect: true,
-				reconnection: true,
-				reconnectionAttempts: 5,
-				reconnectionDelay: 1000,
-			});
+        const socketInstance = io(
+            process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:4000",
+            {
+                auth: {
+                    token: session.user.id,
+                },
+            }
+        );
 
-			socketInstance.on("connect", () => {
-				console.log("Socket connected:", socketInstance.id);
-			});
+        socketInstance.on("connect", () => {
+            console.log("Connected to socket");
+            setIsConnected(true);
+        });
 
-			socketInstance.on("disconnect", () => {
-				console.log("Socket disconnected");
-			});
+        socketInstance.on("disconnect", () => {
+            console.log("Disconnected from socket");
+            setIsConnected(false);
+        });
 
-			socketInstance.on("connect_error", (error) => {
-				console.error("Socket connection error:", error);
-			});
+        socketInstance.on("user:status", ({ userId, status }) => {
+            setOnlineUsers((prev) => {
+                const newSet = new Set(prev);
+                if (status === "online") {
+                    newSet.add(userId);
+                } else {
+                    newSet.delete(userId);
+                }
+                return newSet;
+            });
+        });
 
-			setSocket(socketInstance);
+        socketInstance.on("user:typing", (userId: string) => {
+            setTypingUsers((prev) => new Set([...prev, userId]));
+        });
 
-			return () => {
-				socketInstance.disconnect();
-			};
-		}
-	}, [session?.user?.id]);
+        socketInstance.on("user:stop_typing", (userId: string) => {
+            setTypingUsers((prev) => {
+                const newSet = new Set(prev);
+                newSet.delete(userId);
+                return newSet;
+            });
+        });
 
-	useEffect(() => {
-		console.log(socket);
-		if (socket) {
-			socket.emit("test", "Hello from client");
-		}
-	}, [socket]);
+        socketInstance.on("error", (data: { message: string }) => {
+            console.error(data.message);
+            toast.error(data.message || "An unexpected error occurred");
+        });
 
-	const joinChat = (chatId: string) => {
-		if (socket?.connected) {
-			socket.emit("chat:join", chatId);
-		}
-	};
+        setSocket(socketInstance);
 
-	const leaveChat = (chatId: string) => {
-		if (socket?.connected) {
-			socket.emit("chat:leave", chatId);
-		}
-	};
+        return () => {
+            socketInstance.disconnect();
+        };
+    }, [session]);
 
-	const joinGroup = (groupId: string) => {
-		if (socket?.connected) {
-			socket.emit("group:join", groupId);
-		}
-	};
+    const value = {
+        socket,
+        isConnected,
+        onlineUsers,
+        typingUsers,
+    };
 
-	const leaveGroup = (groupId: string) => {
-		if (socket?.connected) {
-			socket.emit("group:leave", groupId);
-		}
-	};
+    return (
+        <SocketContext.Provider value={value}>
+            {children}
+        </SocketContext.Provider>
+    );
+}
 
-	const sendChatTyping = (chatId: string, isTyping: boolean) => {
-		if (socket?.connected && session?.user?.id) {
-			socket.emit("chat:typing", {
-				chatId,
-				userId: session.user.id,
-				isTyping,
-			});
-		}
-	};
-
-	const sendGroupTyping = (groupId: string, isTyping: boolean) => {
-		if (socket?.connected && session?.user?.id) {
-			socket.emit("group:typing", {
-				groupId,
-				userId: session.user.id,
-				isTyping,
-			});
-		}
-	};
-
-	return (
-		<SocketContext.Provider
-			value={{
-				socket,
-				isConnected: socket?.connected ?? false,
-				joinChat,
-				leaveChat,
-				joinGroup,
-				leaveGroup,
-				sendChatTyping,
-				sendGroupTyping,
-			}}
-		>
-			{children}
-		</SocketContext.Provider>
-	);
+export const useSocket = () => {
+    const context = useContext(SocketContext);
+    if (!context) {
+        throw new Error("useSocket must be used within a SocketProvider");
+    }
+    return context;
 };

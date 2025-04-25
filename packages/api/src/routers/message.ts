@@ -32,7 +32,7 @@ export const messageRouter = createTRPCRouter({
         .input(
             z.object({
                 conversationId: z.string(),
-                cursor: z.number().optional(),
+                cursor: z.number().nullish(),
                 limit: z.number().min(1).max(100).default(50),
             })
         )
@@ -62,7 +62,7 @@ export const messageRouter = createTRPCRouter({
                 where: eq(messages.conversationId, input.conversationId),
                 orderBy: (messages, { desc }) => [desc(messages.createdAt)],
                 limit: input.limit,
-                offset: input.cursor || 0,
+                offset: input.cursor ? input.cursor : undefined,
                 with: {
                     sender: SENDER_SELECT,
                     repliedTo: {
@@ -96,9 +96,8 @@ export const messageRouter = createTRPCRouter({
             return {
                 messages: conversationMessages,
                 nextCursor: input.cursor
-                    ? input.cursor + input.limit
-                    : input.limit,
-                totalCount: totalCount[0]?.count ?? 0,
+                    ? Number(input.cursor) + conversationMessages.length
+                    : conversationMessages.length,
             };
         }),
 
@@ -265,6 +264,38 @@ export const messageRouter = createTRPCRouter({
                 .update(messages)
                 .set({ deletedAt: new Date() })
                 .where(eq(messages.id, input.messageId));
+
+            return { success: true };
+        }),
+
+    editMessage: protectedProcedure
+        .input(z.object({ messageId: z.string(), text: z.string() }))
+        .mutation(async ({ ctx, input }) => {
+            const userId = ctx.session.user.id;
+
+            const message = await ctx.db.query.messages.findFirst({
+                where: eq(messages.id, input.messageId),
+            });
+
+            if (!message) {
+                throw new TRPCError({
+                    code: "NOT_FOUND",
+                    message: "Message not found",
+                });
+            }
+
+            if (message.senderId !== userId) {
+                throw new TRPCError({
+                    code: "FORBIDDEN",
+                    message: "You can only edit your own messages",
+                });
+            }
+
+            const updatedMessage = await ctx.db
+                .update(messages)
+                .set({ text: input.text })
+                .where(eq(messages.id, input.messageId))
+                .returning();
 
             return { success: true };
         }),

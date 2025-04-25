@@ -108,7 +108,7 @@ export const conversationRouter = createTRPCRouter({
             return conversation;
         }),
 
-    createDirectChat: protectedProcedure
+    createDirect: protectedProcedure
         .input(
             z.object({
                 targetUserId: z.string(),
@@ -239,7 +239,7 @@ export const conversationRouter = createTRPCRouter({
             });
         }),
 
-    createGroupConversation: protectedProcedure
+    createGroup: protectedProcedure
         .input(
             z.object({
                 name: z.string().min(1),
@@ -301,7 +301,7 @@ export const conversationRouter = createTRPCRouter({
             });
         }),
 
-    updateConversation: protectedProcedure
+    update: protectedProcedure
         .input(
             z.object({
                 conversationId: z.string(),
@@ -587,7 +587,7 @@ export const conversationRouter = createTRPCRouter({
             return { success: true };
         }),
 
-    leaveConversation: protectedProcedure
+    leave: protectedProcedure
         .input(z.object({ conversationId: z.string() }))
         .mutation(async ({ ctx, input }) => {
             const userId = ctx.session.user.id;
@@ -653,7 +653,7 @@ export const conversationRouter = createTRPCRouter({
             return { success: true };
         }),
 
-    changeRole: protectedProcedure
+    updateRole: protectedProcedure
         .input(
             z.object({
                 conversationId: z.string(),
@@ -737,7 +737,7 @@ export const conversationRouter = createTRPCRouter({
             return { success: true };
         }),
 
-    closeConversation: protectedProcedure
+    close: protectedProcedure
         .input(z.object({ conversationId: z.string() }))
         .mutation(async ({ ctx, input }) => {
             const userId = ctx.session.user.id;

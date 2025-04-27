@@ -30,9 +30,10 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         const socketInstance = io(
             process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:4000",
             {
-                auth: {
-                    token: session.user.id,
-                },
+                // auth: {
+                //     token: session.sessionToken,
+                // },
+                withCredentials: true,
             }
         );
 
@@ -80,7 +81,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         return () => {
             socketInstance.disconnect();
         };
-    }, [session]);
+    }, []);
 
     const value = {
         socket,

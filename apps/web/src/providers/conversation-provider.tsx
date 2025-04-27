@@ -1,161 +1,43 @@
 "use client";
-
-import { createContext, useContext, useState, useEffect } from "react";
-import { useSocket } from "./socket-provider";
-import { api, type RouterOutputs } from "~/trpc/react";
-import { useSession } from "next-auth/react";
+import {
+    createContext,
+    useContext,
+    useState,
+    useEffect,
+    useCallback,
+} from "react";
 import { toast } from "sonner";
+import { api } from "~/trpc/react";
+import { useSession } from "next-auth/react";
 
-type Conversation = RouterOutputs["conversation"]["getAll"][number];
+export interface Conversation {
+    id: string;
+    name: string | null;
+    image: string | null;
+    type: "direct" | "group" | null;
+    createdAt: Date;
+    updatedAt: Date | null;
+    lastMessage?: string | null;
+    lastMessageAt?: Date | null;
+    unreadCount?: number;
+    members: {
+        userId: string;
+        user: {
+            id: string;
+            name: string | null;
+            image: string | null;
+        };
+    }[];
+}
 
-type ConversationContextType = {
-    activeConversationId: string | null;
+interface ConversationContextType {
     conversations: Conversation[];
+    activeConversationId: string | null;
+    setActiveConversation: (id: string) => void;
     isLoading: boolean;
-    setActiveConversationId: (id: string | null) => void;
-    createDirectConversation: ReturnType<
-        typeof api.conversation.createDirect.useMutation
-    >;
-    createGroupConversation: ReturnType<
-        typeof api.conversation.createGroup.useMutation
-    >;
-    updateGroupConversation: ReturnType<
-        typeof api.conversation.update.useMutation
-    >;
-    addMembersToGroup: ReturnType<
-        typeof api.conversation.addMembers.useMutation
-    >;
-    removeMemberFromGroup: ReturnType<
-        typeof api.conversation.removeMember.useMutation
-    >;
-    updateMemberRole: ReturnType<
-        typeof api.conversation.updateRole.useMutation
-    >;
-    leaveGroup: ReturnType<typeof api.conversation.leave.useMutation>;
-};
+}
 
 const ConversationContext = createContext<ConversationContextType | null>(null);
-
-export function ConversationProvider({
-    children,
-}: {
-    children: React.ReactNode;
-}) {
-    const [activeConversationId, setActiveConversationId] = useState<
-        string | null
-    >(null);
-    const { socket } = useSocket();
-    const { data: session } = useSession();
-
-    const utils = api.useUtils();
-    const getConversationsQuery = api.conversation.getAll.useQuery(undefined, {
-        enabled: !!session?.user.id,
-    });
-
-    const createDirectConversationMutation =
-        api.conversation.createDirect.useMutation({
-            onSuccess: async () => {
-                await utils.conversation.getAll.invalidate();
-            },
-            onError: (error) => {
-                toast.error("Failed to create direct conversation");
-                console.error(error);
-            },
-        });
-
-    const createGroupConversationMutation =
-        api.conversation.createGroup.useMutation({
-            onSuccess: async () => {
-                await utils.conversation.getAll.invalidate();
-            },
-            onError: (error) => {
-                toast.error("Failed to create group conversation");
-                console.error(error);
-            },
-        });
-
-    const updateGroupConversationMutation = api.conversation.update.useMutation(
-        {
-            onSuccess: async () => {
-                await utils.conversation.getAll.invalidate();
-            },
-            onError: (error) => {
-                toast.error("Failed to update group conversation");
-                console.error(error);
-            },
-        }
-    );
-
-    const addMembersToGroupMutation = api.conversation.addMembers.useMutation({
-        onSuccess: async () => {
-            await utils.conversation.getAll.invalidate();
-        },
-        onError: (error) => {
-            toast.error("Failed to add members to group");
-            console.error(error);
-        },
-    });
-
-    const removeMemberMutation = api.conversation.removeMember.useMutation({
-        onSuccess: async () => {
-            await utils.conversation.getAll.invalidate();
-        },
-        onError: (error) => {
-            toast.error("Failed to remove member from group");
-            console.error(error);
-        },
-    });
-
-    const updateMemberRoleMutation = api.conversation.updateRole.useMutation({
-        onSuccess: async () => {
-            await utils.conversation.getAll.invalidate();
-        },
-        onError: (error) => {
-            toast.error("Failed to update member role");
-            console.error(error);
-        },
-    });
-
-    const leaveGroupMutation = api.conversation.leave.useMutation({
-        onSuccess: async (_, { conversationId }) => {
-            if (activeConversationId === conversationId) {
-                setActiveConversationId(null);
-            }
-            await utils.conversation.getAll.invalidate();
-        },
-        onError: (error) => {
-            toast.error("Failed to leave group");
-            console.error(error);
-        },
-    });
-
-    useEffect(() => {
-        if (!socket) return;
-
-        throw new Error("todo: add socket listeners");
-        return () => {};
-    }, [socket, activeConversationId, session?.user.id]);
-
-    const value: ConversationContextType = {
-        conversations: getConversationsQuery.data ?? [],
-        isLoading: getConversationsQuery.isLoading,
-        activeConversationId,
-        setActiveConversationId,
-        createDirectConversation: createDirectConversationMutation,
-        createGroupConversation: createGroupConversationMutation,
-        updateGroupConversation: updateGroupConversationMutation,
-        addMembersToGroup: addMembersToGroupMutation,
-        removeMemberFromGroup: removeMemberMutation,
-        updateMemberRole: updateMemberRoleMutation,
-        leaveGroup: leaveGroupMutation,
-    };
-
-    return (
-        <ConversationContext.Provider value={value}>
-            {children}
-        </ConversationContext.Provider>
-    );
-}
 
 export const useConversation = () => {
     const context = useContext(ConversationContext);
@@ -165,4 +47,93 @@ export const useConversation = () => {
         );
     }
     return context;
+};
+
+export const ConversationProvider = ({
+    children,
+}: {
+    children: React.ReactNode;
+}) => {
+    const { data: session } = useSession();
+    const [activeConversationId, setActiveConversationId] = useState<
+        string | null
+    >(null);
+    const [conversations, setConversations] = useState<Conversation[]>([]);
+
+    // Fetch all conversations for the current user
+    const { data, isLoading, error } = api.conversation.getAll.useQuery(
+        undefined,
+        {
+            enabled: !!session?.user.id,
+            refetchOnWindowFocus: false,
+        }
+    );
+
+    // Get unread counts for all conversations
+    const { data: unreadCounts } = api.conversation.getAllUnreadCounts.useQuery(
+        undefined,
+        {
+            enabled: !!session?.user.id,
+            refetchInterval: 30000, // Refresh every 30 seconds
+        }
+    );
+
+    const setActiveConversation = useCallback(
+        (id: string) => {
+            const conversation = conversations.find((c) => c.id === id);
+            if (conversation) {
+                setActiveConversationId(id);
+            } else {
+                toast.error("Conversation not found");
+            }
+        },
+        [conversations]
+    );
+
+    // Update conversations when data changes
+    useEffect(() => {
+        if (data) {
+            // Map conversations and add additional properties
+            const enhancedConversations = data.map((conversation) => {
+                // Find unread count for this conversation
+                const unread = unreadCounts?.conversations.find(
+                    (c) => c.conversationId === conversation.id
+                );
+
+                // Get last message if available
+                const lastMessage = conversation.messages[0]?.text || null;
+
+                return {
+                    ...conversation,
+                    lastMessage,
+                    lastMessageAt:
+                        conversation.messages[0]?.createdAt ||
+                        conversation.updatedAt,
+                    unreadCount: unread?.unreadCount || 0,
+                };
+            });
+
+            setConversations(enhancedConversations);
+        }
+    }, [data, unreadCounts]);
+
+    useEffect(() => {
+        if (error) {
+            toast.error("Failed to load conversations");
+            console.error(error);
+        }
+    }, [error]);
+
+    const value = {
+        conversations,
+        activeConversationId,
+        setActiveConversation,
+        isLoading,
+    };
+
+    return (
+        <ConversationContext.Provider value={value}>
+            {children}
+        </ConversationContext.Provider>
+    );
 };

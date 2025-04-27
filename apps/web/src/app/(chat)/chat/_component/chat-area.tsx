@@ -1,193 +1,321 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState, useEffect, useRef, useLayoutEffect } from "react";
+import { Button } from "~/components/ui/button";
+import { ScrollArea } from "~/components/ui/scroll-area";
+import { Avatar, AvatarFallback, AvatarImage } from "~/components/ui/avatar";
+import { MoreHorizontal, Paperclip, Send, X } from "lucide-react";
+import { Textarea } from "~/components/ui/textarea";
+import { TooltipProvider } from "~/components/ui/tooltip";
 import { useMessage } from "~/providers/message-provider";
 import { useConversation } from "~/providers/conversation-provider";
-import { useSocket } from "~/providers/socket-provider";
+import { convertHtmlToMarkdown, formatFileSize } from "~/lib/utils";
+import { EmojiPicker } from "~/components/emoji-picker";
+import { toast } from "sonner";
 import { useSession } from "next-auth/react";
-import { Button } from "~/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "~/components/ui/avatar";
-import { Textarea } from "~/components/ui/textarea";
-import { ScrollArea } from "~/components/ui/scroll-area";
-import { cn } from "~/lib/utils";
-import { format } from "date-fns";
+import ReactMarkdown, {
+    type Components as MarkdownComponents,
+} from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
-    Paperclip,
-    Send,
-    Image,
-    X,
-    MoreHorizontal,
-    Smile,
-    Trash,
-    Edit,
-    Reply,
-    Check,
-    Info,
-} from "lucide-react";
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogClose,
+} from "~/components/ui/dialog";
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-} from "~/components/ui/dialog";
+import MessageItem from "./message-item";
+import { api } from "~/trpc/react";
+import type { RouterOutputs } from "~/trpc/react";
+import GroupDetailsDialog from "./group-details-dialog";
 
-type ChatAreaProps = {
-    conversationId: string;
-    messageId?: string | null;
+type Message = RouterOutputs["message"]["getMessages"]["messages"][number];
+
+// Markdown renderer components
+const renderers: MarkdownComponents = {
+    p: ({ children }) => <p className="text-accent-foreground">{children}</p>,
+    strong: ({ children }) => <strong className="font-bold">{children}</strong>,
+    em: ({ children }) => <em className="italic font-sans">{children}</em>,
+    s: ({ children }) => <s className="line-through">{children}</s>,
+    code: ({ children }) => (
+        <code className="bg-accent text-accent-foreground p-1 rounded text-sm ">
+            {children}
+        </code>
+    ),
+    pre: ({ children }) => (
+        <pre className="bg-accent text-accent-foreground p-1 rounded max-w-lg whitespace-pre overflow-x-auto">
+            {children}
+        </pre>
+    ),
+    blockquote: ({ children }) => (
+        <blockquote className="border-l-4 border-gray-500 pl-4 italic">
+            {children}
+        </blockquote>
+    ),
+    a: ({ href, children }) => (
+        <a
+            tabIndex={-1}
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-500 underline"
+        >
+            {children}
+        </a>
+    ),
+    img: ({ src, alt }) => (
+        <img src={src} alt={alt} className="max-w-sm rounded-md" />
+    ),
+    ul: ({ children }) => <ul className="list-disc list-inside">{children}</ul>,
+    ol: ({ children }) => (
+        <ol className="list-decimal list-inside">{children}</ol>
+    ),
+    li: ({ children }) => <li className="mb-1">{children}</li>,
+    h1: ({ children }) => (
+        <h1 className="text-2xl font-bold mb-2">{children}</h1>
+    ),
+    h2: ({ children }) => (
+        <h2 className="text-xl font-bold mb-2">{children}</h2>
+    ),
+    h3: ({ children }) => (
+        <h3 className="text-lg font-bold mb-2">{children}</h3>
+    ),
+    h4: ({ children }) => (
+        <h4 className="text-base font-bold mb-2">{children}</h4>
+    ),
+    h5: ({ children }) => (
+        <h5 className="text-sm font-bold mb-2">{children}</h5>
+    ),
+    h6: ({ children }) => (
+        <h6 className="text-xs font-bold mb-2">{children}</h6>
+    ),
 };
 
-export default function ChatArea({ conversationId, messageId }: ChatAreaProps) {
+export function ChatArea() {
     const { data: session } = useSession();
     const {
         messages,
         sendMessage,
-        deleteMessage,
         editMessage,
-        isFetching,
-        replyToMessage,
-        setReplyToMessage,
+        deleteMessage,
         markAsRead,
+        isSending,
+        handleTyping,
     } = useMessage();
-    const { conversations, activeConversationId } = useConversation();
-    const { socket, onlineUsers, typingUsers } = useSocket();
+
+    const { activeConversationId, conversations } = useConversation();
+
+    const membersQuery = api.user.getMembers.useQuery(
+        {
+            conversationId: activeConversationId || "",
+        },
+        {
+            enabled: !!activeConversationId,
+        }
+    );
+    const membersMap = new Map(membersQuery.data?.map((m) => [m.id, m]) || []);
+
+    const onlineContactsQuery = api.user.getOnlineContacts.useQuery();
+    const onlineContacts = onlineContactsQuery.data || [];
+
+    const typingUsersQuery = api.user.getTypingUsers.useQuery(
+        {
+            conversationId: activeConversationId || "",
+        },
+        {
+            enabled: !!activeConversationId,
+        }
+    );
+    const typingUsers = typingUsersQuery.data || [];
 
     const [newMessage, setNewMessage] = useState("");
-    const [editingMessage, setEditingMessage] = useState<string | null>(null);
+    const [editingMessage, setEditingMessage] = useState<Message | null>(null);
     const [editText, setEditText] = useState("");
-    const [showGroupInfo, setShowGroupInfo] = useState(false);
-    const [attachment, setAttachment] = useState<File | null>(null);
-    const [attachmentPreview, setAttachmentPreview] = useState<string | null>(
+    const [selectedForReply, setSelectedForReply] = useState<Message | null>(
         null
     );
 
-    const messagesEndRef = useRef<HTMLDivElement>(null);
-    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const scrollAreaRef = useRef<HTMLDivElement>(null);
+    const msgInputRef = useRef<HTMLTextAreaElement>(null);
+
+    const [selectedFile, setSelectedFile] = useState<File | null>(null);
+    const [selectedFilePreview, setSelectedFilePreview] = useState<
+        string | null
+    >(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-    const conversation = conversations.find((c) => c.id === conversationId);
+    const [clearChatDialogOpen, setClearChatDialogOpen] = useState(false);
+    const [leaveGroupDialogOpen, setLeaveGroupDialogOpen] = useState(false);
+    const [groupDetailsDialogOpen, setGroupDetailsDialogOpen] = useState(false);
 
-    useEffect(() => {
-        if (messageId && messagesEndRef.current) {
-            const messageElement = document.getElementById(
-                `message-${messageId}`
-            );
-            if (messageElement) {
-                messageElement.scrollIntoView({
-                    behavior: "smooth",
-                    block: "center",
+    const chatOpened = conversations.find((c) => c.id === activeConversationId);
+
+    const currentUser = session?.user;
+
+    const currentUserMembership = currentUser && membersMap.get(currentUser.id);
+    const isChatMuted = currentUserMembership?.muted || false;
+
+    const clearChatMutation = api.conversation.clearChat.useMutation({
+        onSuccess: () => {
+            toast.success("Chat cleared successfully");
+            setClearChatDialogOpen(false);
+        },
+        onError: (error) => {
+            toast.error(error.message || "Failed to clear chat");
+        },
+    });
+
+    const leaveGroupMutation = api.conversation.leave.useMutation({
+        onSuccess: () => {
+            toast.success("Left group successfully");
+            setLeaveGroupDialogOpen(false);
+        },
+        onError: (error) => {
+            toast.error(error.message || "Failed to leave group");
+        },
+    });
+
+    const removeMemberMutation = api.conversation.removeMember.useMutation({
+        onSuccess: () => {
+            toast.success("Member removed successfully");
+        },
+        onError: (error) => {
+            toast.error(error.message || "Failed to remove member");
+        },
+    });
+
+    const updateContactMutation = api.user.updateContact.useMutation({
+        onSuccess: () => {
+            toast.success("Contact updated successfully");
+        },
+        onError: (error) => {
+            toast.error(error.message || "Failed to update contact");
+        },
+    });
+
+    const utils = api.useUtils();
+    const updateMutedChatMutation = api.user.updateMutedChat.useMutation({
+        onSuccess: () => {
+            toast.success("Chat preference updated");
+            // Invalidate the members query to refresh the muted status
+            if (activeConversationId) {
+                utils.user.getMembers.invalidate({
+                    conversationId: activeConversationId,
                 });
-                // Add a highlight effect
-                messageElement.classList.add("bg-accent");
-                setTimeout(() => {
-                    messageElement.classList.remove("bg-accent");
-                }, 3000);
             }
-        } else {
-            scrollToBottom();
-        }
-    }, [messages, messageId]);
+        },
+        onError: (error) => {
+            toast.error(error.message || "Failed to update chat preference");
+        },
+    });
 
-    useEffect(() => {
-        markAsRead();
-    }, [messages, markAsRead]);
+    // useEffect(() => {
+    //     if (msgInputRef.current && msgInputRef.current.scrollHeight < 100) {
+    //         msgInputRef.current.style.height = "auto";
+    //         msgInputRef.current.style.height = `${msgInputRef.current.scrollHeight}px`;
+    //         if (editingMessage) {
+    //             setEditingMessage(null);
+    //             msgInputRef.current.focus();
+    //         }
+    //     }
+    // }, [newMessage]);
 
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    };
-
+    // Clear input and reset state when changing conversations
     useEffect(() => {
         setNewMessage("");
         setEditingMessage(null);
-        setAttachment(null);
-        setAttachmentPreview(null);
-    }, [conversationId]);
+        setEditText("");
+        msgInputRef.current?.focus();
+        setClearChatDialogOpen(false);
+        setLeaveGroupDialogOpen(false);
+        setGroupDetailsDialogOpen(false);
+    }, [activeConversationId]);
 
-    const handleSendMessage = async () => {
-        if ((!newMessage.trim() && !attachment) || isFetching) return;
-
-        if (editingMessage) {
-            await editMessage(editingMessage, newMessage);
-            setEditingMessage(null);
-        } else {
-            await sendMessage({
-                conversationId,
-                text: newMessage,
-                repliedToId: replyToMessage?.id,
-                attachment: attachment
-                    ? {
-                          name: attachment.name,
-                          size: attachment.size,
-                          fType: attachment.type.startsWith("image/")
-                              ? "image"
-                              : "file",
-                          url: URL.createObjectURL(attachment),
-                          mimeType: attachment.type,
-                      }
-                    : undefined,
-            });
-            setReplyToMessage(null);
+    useEffect(() => {
+        if (selectedForReply) {
+            msgInputRef.current?.focus();
         }
+    }, [selectedForReply]);
 
-        setNewMessage("");
-        setAttachment(null);
-        setAttachmentPreview(null);
-    };
+    // Scroll to bottom when messages change
+    // useEffect(() => {
+    //     scrollAreaRef.current?.querySelector(":scope >div")?.scrollTo({
+    //         top: 999999999,
+    //         behavior: "auto",
+    //     });
+    //     if (activeConversationId) {
+    //         markAsRead();
+    //     }
+    // }, [messages, activeConversationId, markAsRead]);
 
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            handleSendMessage();
-        }
-    };
-
-    const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        setNewMessage(e.target.value);
-
-        // Emit typing events
-        if (socket && conversationId) {
-            socket.emit("user:typing", conversationId);
-
-            if (typingTimeoutRef.current) {
-                clearTimeout(typingTimeoutRef.current);
-            }
-
-            typingTimeoutRef.current = setTimeout(() => {
-                socket.emit("user:stop_typing", conversationId);
-            }, 3000);
-        }
-    };
-
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target?.files?.[0]) {
-            const file = e.target.files[0];
-            setAttachment(file);
-
-            if (file.type.startsWith("image/")) {
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    setAttachmentPreview(
-                        (event.target?.result as string) || null
-                    );
-                };
-                reader.readAsDataURL(file);
+    // Handle file preview
+    useLayoutEffect(() => {
+        if (selectedFile) {
+            if (selectedFile.type.startsWith("image/")) {
+                setSelectedFilePreview(URL.createObjectURL(selectedFile));
             } else {
-                setAttachmentPreview(null);
+                setSelectedFilePreview(null);
             }
+        }
+    }, [selectedFile]);
+
+    const handleSendMessage = () => {
+        if (editingMessage) {
+            handleSaveEdit();
+            return;
+        }
+
+        if (activeConversationId && (newMessage.trim() || selectedFile)) {
+            sendMessage({
+                conversationId: activeConversationId,
+                text: newMessage.trim() || selectedFile?.name || "",
+                repliedToId: selectedForReply?.id,
+                attachment: selectedFile || undefined,
+            });
+            setNewMessage("");
+            setSelectedFile(null);
+            setSelectedForReply(null);
         }
     };
 
-    const removeAttachment = () => {
-        setAttachment(null);
-        setAttachmentPreview(null);
-        if (fileInputRef.current) {
-            fileInputRef.current.value = "";
+    const handleEditStart = (message: Message) => {
+        setEditingMessage(message);
+        setEditText(message.text);
+        setNewMessage(message.text);
+        msgInputRef.current?.focus();
+    };
+
+    const handleCancelEdit = () => {
+        setEditingMessage(null);
+        setEditText("");
+        setNewMessage("");
+    };
+
+    const handleSaveEdit = () => {
+        if (editingMessage && newMessage.trim()) {
+            editMessage(editingMessage.id, newMessage.trim());
+            setEditingMessage(null);
+            setEditText("");
+            setNewMessage("");
+        }
+    };
+
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            if (file.size > 100 * 1024 * 1024) {
+                toast.error("File too large to upload. Limit is 100MB");
+                return;
+            }
+            setSelectedFile(file);
         }
     };
 
@@ -195,509 +323,512 @@ export default function ChatArea({ conversationId, messageId }: ChatAreaProps) {
         fileInputRef.current?.click();
     };
 
-    const cancelEdit = () => {
-        setEditingMessage(null);
-        setNewMessage("");
+    const handleRemoveFile = () => {
+        setSelectedFile(null);
     };
 
-    const getDisplayName = (userId: string) => {
-        if (!conversation) return "Unknown";
-
-        const member = conversation.members.find((m) => m.userId === userId);
-        return member?.user.name || "Unknown";
-    };
-
-    const getInitials = (name: string | null | undefined) => {
-        if (!name) return "?";
-        return name
-            .split(" ")
-            .map((n) => n[0])
-            .slice(0, 2)
-            .join("")
-            .toUpperCase();
-    };
-
-    const isUserOnline = (userId: string) => {
-        return onlineUsers.has(userId);
-    };
-
-    const isUserTyping = (userId: string) => {
-        return typingUsers.has(userId) && userId !== session?.user?.id;
-    };
-
-    const getConversationInfo = () => {
-        if (!conversation)
-            return {
-                name: "Unknown",
-                image: null,
-                description: null,
-                membersCount: 0,
-            };
-
-        if (conversation.type === "direct") {
-            const otherMember = conversation.members.find(
-                (m) => m.userId !== session?.user?.id
-            );
-            return {
-                name: otherMember?.user.name || "Unknown",
-                image: otherMember?.user.image,
-                description: null,
-                membersCount: 2,
-                isOnline: otherMember
-                    ? isUserOnline(otherMember.userId)
-                    : false,
-            };
+    const clearChat = () => {
+        if (activeConversationId) {
+            clearChatMutation.mutate({ conversationId: activeConversationId });
         }
-
-        return {
-            name: conversation.name || "Group",
-            image: conversation.image,
-            description: conversation.description,
-            membersCount: conversation.members.length,
-            isOnline: false,
-        };
     };
 
-    if (!conversation) {
+    const leaveGroup = () => {
+        if (activeConversationId) {
+            leaveGroupMutation.mutate({ conversationId: activeConversationId });
+        }
+    };
+
+    const removeMember = (params: { groupId: string; userId: string }) => {
+        removeMemberMutation.mutate({
+            conversationId: params.groupId,
+            userId: params.userId,
+        });
+    };
+
+    const updateContact = (userId: string, action: "add" | "remove") => {
+        updateContactMutation.mutate({ userId, action });
+    };
+
+    const updateMutedChat = (chatId: string, muted: boolean) => {
+        updateMutedChatMutation.mutate({ conversationId: chatId, muted });
+    };
+
+    if (!chatOpened)
         return (
-            <div className="flex-1 flex items-center justify-center">
-                <p className="text-muted-foreground">
-                    Select a conversation to start chatting
+            <div className="h-full flex-1 grid place-items-center select-none border rounded-r-lg border-l-0 max-h-screen">
+                <p className="text-accent-foreground">
+                    Select a chat/group to start chatting
                 </p>
             </div>
         );
-    }
 
-    const conversationInfo = getConversationInfo();
-
-    const typingMembersNames = conversation.members
-        .filter((m) => isUserTyping(m.userId))
-        .map((m) => m.user.name || "Someone")
-        .join(", ");
+    const chatName =
+        chatOpened.type === "group"
+            ? chatOpened.name || ""
+            : chatOpened.members.find((m) => m.userId !== currentUser?.id)?.user
+                  .name || "";
+    const chatImage =
+        chatOpened.type === "group"
+            ? chatOpened.image
+            : chatOpened.members.find((m) => m.userId !== currentUser?.id)?.user
+                  .image;
 
     return (
-        <div className="flex flex-col flex-1 h-full">
-            <div className="border-b p-3 flex justify-between items-center">
-                <div className="flex items-center space-x-3">
-                    <Avatar>
-                        <AvatarImage src={conversationInfo.image || ""} />
+        <div className="h-full flex-1 flex flex-col border rounded-r-lg border-l-0 max-h-screen">
+            <div className="p-4 border-b flex justify-between items-center h-18">
+                <div className="flex items-center select-none">
+                    <Avatar className="h-10 w-10 mr-4">
+                        <AvatarImage
+                            src={chatImage || undefined}
+                            alt={chatName}
+                        />
                         <AvatarFallback>
-                            {getInitials(conversationInfo.name)}
+                            {chatName.slice(0, 2).toUpperCase()}
                         </AvatarFallback>
                     </Avatar>
                     <div>
-                        <div className="flex items-center space-x-2">
-                            <h2 className="font-semibold">
-                                {conversationInfo.name}
-                            </h2>
-                            {conversation.type === "direct" &&
-                                conversationInfo.isOnline && (
-                                    <div className="h-2 w-2 rounded-full bg-green-500" />
-                                )}
-                        </div>
-                        {conversation.type === "direct" ? (
-                            <p className="text-xs text-muted-foreground">
-                                {conversationInfo.isOnline
-                                    ? "Online"
-                                    : "Offline"}
-                            </p>
-                        ) : (
-                            <p className="text-xs text-muted-foreground">
-                                {conversationInfo.membersCount} members
-                            </p>
-                        )}
+                        <h2 className="font-bold">{chatName}</h2>
+                        <p className="text-xs text-muted-foreground">
+                            {typingUsers.length > 0 &&
+                                `${new Intl.ListFormat("en").format(
+                                    typingUsers.map(
+                                        (id) => membersMap.get(id)?.name || ""
+                                    )
+                                )} is typing...`}
+                            {typingUsers.length === 0 &&
+                                (chatOpened.type === "direct"
+                                    ? onlineContacts.includes(
+                                          chatOpened.members.find(
+                                              (m) =>
+                                                  m.userId !== currentUser?.id
+                                          )?.userId || ""
+                                      )
+                                        ? "Online"
+                                        : chatOpened.name?.includes(
+                                              " (Unknown)"
+                                          )
+                                        ? ""
+                                        : "Offline"
+                                    : `${new Intl.ListFormat("en").format(
+                                          Array.from(membersMap.values())
+                                              .map((e) => e.name || "")
+                                              .sort((a, b) =>
+                                                  a.localeCompare(b)
+                                              )
+                                      )}`)}
+                        </p>
                     </div>
                 </div>
                 <div>
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setShowGroupInfo(true)}
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                                <MoreHorizontal className="h-5 w-5" />
+                                <span className="sr-only">More Options</span>
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                            {chatOpened.type === "direct" && (
+                                <>
+                                    <DropdownMenuItem
+                                        onClick={() =>
+                                            setClearChatDialogOpen(true)
+                                        }
+                                    >
+                                        Clear Chat
+                                    </DropdownMenuItem>
+
+                                    {chatOpened.name?.includes("(Unknown)") && (
+                                        <DropdownMenuItem
+                                            onClick={() => {
+                                                const otherMember =
+                                                    chatOpened.members.find(
+                                                        (m) =>
+                                                            m.userId !==
+                                                            currentUser?.id
+                                                    );
+                                                if (otherMember) {
+                                                    updateContact(
+                                                        otherMember.userId,
+                                                        "add"
+                                                    );
+                                                }
+                                            }}
+                                        >
+                                            Add Contact
+                                        </DropdownMenuItem>
+                                    )}
+                                </>
+                            )}
+                            {chatOpened.type === "group" && (
+                                <>
+                                    <DropdownMenuItem
+                                        onClick={() =>
+                                            setLeaveGroupDialogOpen(true)
+                                        }
+                                    >
+                                        Leave Group
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                        onClick={() =>
+                                            setGroupDetailsDialogOpen(true)
+                                        }
+                                    >
+                                        Group Details
+                                    </DropdownMenuItem>
+                                </>
+                            )}
+                            <DropdownMenuItem
+                                onClick={() => {
+                                    if (chatOpened) {
+                                        updateMutedChat(
+                                            chatOpened.id,
+                                            !isChatMuted
+                                        );
+                                    }
+                                }}
+                            >
+                                {isChatMuted ? "Unmute" : "Mute"} Chat
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                    <Dialog
+                        open={clearChatDialogOpen}
+                        onOpenChange={setClearChatDialogOpen}
                     >
-                        <Info className="h-5 w-5" />
-                    </Button>
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>Clear Chat</DialogTitle>
+                                <DialogDescription>
+                                    Are you sure you want to clear all messages?
+                                    This action cannot be undone.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <DialogFooter>
+                                <DialogClose asChild>
+                                    <Button variant="outline">Cancel</Button>
+                                </DialogClose>
+                                <DialogClose asChild>
+                                    <Button
+                                        variant="destructive"
+                                        onClick={clearChat}
+                                    >
+                                        Clear
+                                    </Button>
+                                </DialogClose>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                    <Dialog
+                        open={leaveGroupDialogOpen}
+                        onOpenChange={setLeaveGroupDialogOpen}
+                    >
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>Leave Group</DialogTitle>
+                                <DialogDescription>
+                                    Are you sure you want to leave this group?
+                                    Only admins can re-add you.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <DialogFooter>
+                                <DialogClose asChild>
+                                    <Button variant="outline">Cancel</Button>
+                                </DialogClose>
+                                <DialogClose asChild>
+                                    <Button
+                                        variant="destructive"
+                                        onClick={() => {
+                                            if (chatOpened && currentUser) {
+                                                removeMember({
+                                                    groupId: chatOpened.id,
+                                                    userId: currentUser.id,
+                                                });
+                                            }
+                                        }}
+                                    >
+                                        Leave
+                                    </Button>
+                                </DialogClose>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                    <Dialog
+                        open={groupDetailsDialogOpen}
+                        onOpenChange={setGroupDetailsDialogOpen}
+                    >
+                        <GroupDetailsDialog
+                            conversationId={chatOpened.id}
+                            onClose={() => setGroupDetailsDialogOpen(false)}
+                        />
+                    </Dialog>
                 </div>
             </div>
-
-            <ScrollArea className="flex-1 p-4">
-                <div className="space-y-4">
-                    {messages.map((message) => {
-                        const isCurrentUser =
-                            message.senderId === session?.user.id;
-                        const date = new Date(message.createdAt);
-                        const timeString = format(date, "HH:mm");
-                        const formattedDate = format(date, "dd MMM yyyy");
-
-                        return (
-                            <div
-                                key={message.id}
-                                id={`message-${message.id}`}
-                                className={cn(
-                                    "flex transition-colors duration-300 rounded-lg p-1",
-                                    isCurrentUser
-                                        ? "justify-end"
-                                        : "justify-start"
-                                )}
+            <TooltipProvider
+                delayDuration={100}
+                disableHoverableContent
+                skipDelayDuration={0}
+            >
+                <ScrollArea
+                    className="overflow-y-auto p-4 h-full"
+                    ref={scrollAreaRef}
+                >
+                    {messages.map((message, i, arr) => (
+                        <MessageItem
+                            key={message.id}
+                            message={message}
+                            isFirstMessage={
+                                i === 0 ||
+                                !!message.repliedTo ||
+                                (i > 0 &&
+                                    arr[i - 1]?.senderId !== message.senderId)
+                            }
+                            sender={message.sender}
+                            isCurrentUser={currentUser?.id === message.senderId}
+                            isCurrentUserAdmin={
+                                membersMap.get(currentUser?.id || "")?.role ===
+                                "admin"
+                            }
+                            onEdit={() => handleEditStart(message)}
+                            onDelete={() => {
+                                deleteMessage(message.id);
+                            }}
+                            isRepliedTo={selectedForReply?.id === message.id}
+                            onReply={() => setSelectedForReply(message)}
+                        >
+                            <ReactMarkdown
+                                remarkPlugins={[remarkGfm]}
+                                components={renderers}
                             >
-                                <div
-                                    className={cn(
-                                        "max-w-[80%] flex",
-                                        isCurrentUser
-                                            ? "flex-row-reverse"
-                                            : "flex-row"
-                                    )}
-                                >
-                                    {!isCurrentUser && (
-                                        <Avatar className="h-8 w-8 mr-2">
-                                            <AvatarImage
-                                                src={message.sender.image || ""}
-                                            />
-                                            <AvatarFallback>
-                                                {getInitials(
-                                                    message.sender.name
-                                                )}
-                                            </AvatarFallback>
-                                        </Avatar>
-                                    )}
-
-                                    <div
-                                        className={cn(
-                                            "rounded-lg p-3 space-y-1",
-                                            isCurrentUser
-                                                ? "bg-primary text-primary-foreground mr-2"
-                                                : "bg-muted text-muted-foreground"
-                                        )}
-                                    >
-                                        {!isCurrentUser && (
-                                            <p className="text-xs font-medium">
-                                                {message.sender.name}
-                                            </p>
-                                        )}
-
-                                        {message.repliedTo && (
-                                            <div
-                                                className={cn(
-                                                    "text-xs p-2 rounded border-l-2 mb-2",
-                                                    isCurrentUser
-                                                        ? "border-primary-foreground/50 bg-primary-foreground/10"
-                                                        : "border-muted-foreground/50 bg-muted-foreground/10"
-                                                )}
-                                            >
-                                                <p className="font-medium">
-                                                    {
-                                                        message.repliedTo.sender
-                                                            .name
-                                                    }
-                                                </p>
-                                                <p className="truncate">
-                                                    {message.repliedTo.text}
-                                                </p>
-                                            </div>
-                                        )}
-
-                                        {message.attachment?.url && (
-                                            <div className="mb-2">
-                                                {message.attachment.fType ===
-                                                "image" ? (
-                                                    <div className="relative w-64 h-48 rounded-md overflow-hidden">
-                                                        <img
-                                                            src={
-                                                                message
-                                                                    .attachment
-                                                                    .url
-                                                            }
-                                                            alt="Attachment"
-                                                            className="object-cover"
-                                                        />
-                                                    </div>
-                                                ) : (
-                                                    <div className="flex items-center space-x-2 p-2 rounded bg-background/50">
-                                                        <Paperclip className="h-4 w-4" />
-                                                        <span className="text-sm">
-                                                            {
-                                                                message
-                                                                    .attachment
-                                                                    .name
-                                                            }
-                                                        </span>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-
-                                        <p className="whitespace-pre-wrap break-words">
-                                            {message.text}
-                                        </p>
-
-                                        <div className="flex items-center justify-end space-x-2">
-                                            <span className="text-xs opacity-70">
-                                                {timeString}
-                                            </span>
-
-                                            {isCurrentUser && (
-                                                <DropdownMenu>
-                                                    <DropdownMenuTrigger
-                                                        asChild
-                                                    >
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="h-6 w-6"
-                                                        >
-                                                            <MoreHorizontal className="h-3 w-3" />
-                                                        </Button>
-                                                    </DropdownMenuTrigger>
-                                                    <DropdownMenuContent align="end">
-                                                        <DropdownMenuItem
-                                                            onClick={() => {
-                                                                setEditingMessage(
-                                                                    message.id
-                                                                );
-                                                                setNewMessage(
-                                                                    message.text
-                                                                );
-                                                                textareaRef.current?.focus();
-                                                            }}
-                                                        >
-                                                            <Edit className="h-4 w-4 mr-2" />
-                                                            <span>Edit</span>
-                                                        </DropdownMenuItem>
-                                                        <DropdownMenuItem
-                                                            onClick={() =>
-                                                                deleteMessage(
-                                                                    message.id
-                                                                )
-                                                            }
-                                                            className="text-destructive"
-                                                        >
-                                                            <Trash className="h-4 w-4 mr-2" />
-                                                            <span>Delete</span>
-                                                        </DropdownMenuItem>
-                                                    </DropdownMenuContent>
-                                                </DropdownMenu>
-                                            )}
-
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-6 w-6"
-                                                onClick={() =>
-                                                    setReplyToMessage(message)
-                                                }
-                                            >
-                                                <Reply className="h-3 w-3" />
-                                            </Button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        );
-                    })}
-
-                    {typingMembersNames && (
-                        <div className="text-xs text-muted-foreground animate-pulse">
-                            {typingMembersNames}{" "}
-                            {typingMembersNames.includes(",") ? "are" : "is"}{" "}
-                            typing...
-                        </div>
-                    )}
-
-                    <div ref={messagesEndRef} />
-                </div>
-            </ScrollArea>
-
-            {replyToMessage && (
-                <div className="flex items-center justify-between mx-4 p-2 border rounded-t-md bg-muted/50">
-                    <div className="flex items-center">
-                        <Reply className="h-4 w-4 mr-2 text-muted-foreground" />
-                        <div>
-                            <p className="text-xs font-medium">
-                                Replying to {replyToMessage.sender.name}
-                            </p>
-                            <p className="text-xs text-muted-foreground truncate">
-                                {replyToMessage.text}
-                            </p>
-                        </div>
+                                {message.text}
+                            </ReactMarkdown>
+                        </MessageItem>
+                    ))}
+                </ScrollArea>
+            </TooltipProvider>
+            {selectedForReply && (
+                <div className="-top-full left-0 w-full p-2 rounded-t-md border-t text-xs select-none">
+                    <div className="flex items-center justify-between">
+                        <button
+                            className="hover:underline"
+                            onClick={() => {
+                                const element = document.querySelector(
+                                    `[data-message-id="${selectedForReply.id}"]`
+                                );
+                                if (element) {
+                                    element.scrollIntoView({
+                                        behavior: "smooth",
+                                    });
+                                    element.classList.add("animate-flash");
+                                    element.addEventListener(
+                                        "animationend",
+                                        () => {
+                                            element.classList.remove(
+                                                "animate-flash"
+                                            );
+                                        },
+                                        { once: true }
+                                    );
+                                }
+                            }}
+                        >
+                            Replying to{" "}
+                            {selectedForReply.senderId === currentUser?.id
+                                ? currentUser.name
+                                : chatOpened.name}
+                        </button>
+                        <Button
+                            variant="ghost"
+                            className="w-6 h-6 rounded-full p-1"
+                            onClick={() => setSelectedForReply(null)}
+                        >
+                            <X className="h-4 w-4" />
+                            <span className="sr-only">Cancel Reply</span>
+                        </Button>
                     </div>
+                </div>
+            )}
+            {selectedFile && (
+                <div className="p-2 border-t flex items-center justify-between select-none">
+                    <div className="flex items-center gap-2">
+                        {selectedFilePreview && (
+                            <a
+                                href={selectedFilePreview}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title={`Click to preview ${selectedFile.name}`}
+                            >
+                                <img
+                                    src={selectedFilePreview}
+                                    alt={selectedFile.name}
+                                    className="h-40 w-40 rounded-md"
+                                />
+                            </a>
+                        )}
+                        <button
+                            title={`Click to preview ${selectedFile.name}`}
+                            onClick={(e) => {
+                                e.preventDefault();
+                                const url =
+                                    selectedFilePreview ||
+                                    URL.createObjectURL(selectedFile);
+                                window.open(url, "_blank");
+                                // Don't revoke URL if it's the preview
+                                if (!selectedFilePreview) {
+                                    URL.revokeObjectURL(url);
+                                }
+                            }}
+                            className="hover:underline cursor-pointer"
+                        >
+                            <span className="text-sm font-medium">
+                                {selectedFile.name} (
+                                {formatFileSize(selectedFile.size)})
+                            </span>
+                        </button>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={handleRemoveFile}
+                        >
+                            <X className="h-4 w-4" />
+                            <span className="sr-only">Remove File</span>
+                        </Button>
+                    </div>
+                </div>
+            )}
+            <div className="p-4 border-t relative">
+                <div className="flex items-end gap-2">
                     <Button
                         variant="ghost"
                         size="icon"
-                        className="h-6 w-6"
-                        onClick={() => setReplyToMessage(null)}
+                        onClick={triggerFileInput}
+                        disabled={!!editingMessage}
                     >
-                        <X className="h-4 w-4" />
+                        <Paperclip className="h-5 w-5" />
+                        <span className="sr-only">Attach File</span>
                     </Button>
-                </div>
-            )}
+                    <input
+                        hidden
+                        type="file"
+                        accept="*"
+                        ref={fileInputRef}
+                        className="hidden"
+                        onChange={handleFileSelect}
+                    />
+                    <Textarea
+                        placeholder={
+                            editingMessage
+                                ? "Edit message..."
+                                : "Type a message..."
+                        }
+                        ref={msgInputRef}
+                        value={newMessage}
+                        rows={1}
+                        className="resize-none min-h-fit max-h-32 row-auto"
+                        onChange={(e) => {
+                            setNewMessage(e.target.value);
+                            if (!editingMessage) {
+                                handleTyping();
+                            }
+                        }}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                                if (!e.shiftKey) {
+                                    e.preventDefault();
+                                    handleSendMessage();
+                                }
+                            } else if (e.key === "Escape") {
+                                if (editingMessage) {
+                                    handleCancelEdit();
+                                } else {
+                                    setSelectedForReply(null);
+                                }
+                            }
+                        }}
+                        onPaste={(e) => {
+                            e.preventDefault();
+                            if (e.clipboardData.types.includes("Files")) {
+                                try {
+                                    const file = e.clipboardData.files[0];
+                                    if (!file) return;
+                                    if (file.size > 100 * 1024 * 1024) {
+                                        toast.error(
+                                            "File too large to upload. Limit is 100MB"
+                                        );
+                                        return;
+                                    }
+                                    setSelectedFile(file);
+                                } catch (error) {
+                                    console.error(error);
+                                    toast.error(
+                                        "Failed to upload file from clipboard"
+                                    );
+                                }
+                                return;
+                            }
+                            if (e.clipboardData.types.includes("text/html")) {
+                                const text =
+                                    e.clipboardData.getData("text/html");
+                                const md = convertHtmlToMarkdown(text);
+                                setNewMessage((prev) => prev + md);
+                                return;
+                            }
+                            if (e.clipboardData.types.includes("text/plain")) {
+                                const text =
+                                    e.clipboardData.getData("text/plain");
+                                setNewMessage((prev) => prev + text);
+                                return;
+                            }
+                        }}
+                    />
 
-            {attachment && (
-                <div className="flex items-center justify-between mx-4 p-2 border-t border-x rounded-t-md bg-muted/50">
-                    <div className="flex items-center">
-                        <div className="w-10 h-10 flex items-center justify-center">
-                            {attachmentPreview ? (
-                                <div className="relative w-8 h-8 rounded overflow-hidden">
-                                    <img
-                                        src={attachmentPreview}
-                                        alt="Attachment preview"
-                                        className="object-cover"
-                                    />
-                                </div>
-                            ) : (
-                                <Paperclip className="h-5 w-5 text-muted-foreground" />
-                            )}
-                        </div>
-                        <span className="text-sm truncate max-w-64">
-                            {attachment.name}
-                        </span>
-                    </div>
+                    <EmojiPicker
+                        onEmojiSelect={(emoji) => {
+                            const input = msgInputRef.current;
+                            if (!input) return;
+                            const startPos = input.selectionStart || 0;
+                            const endPos = input.selectionEnd || 0;
+                            const text = input.value;
+                            const before = text.substring(0, startPos);
+                            const after = text.substring(endPos, text.length);
+                            input.value = before + emoji + after;
+                            input.selectionStart = startPos + emoji.length;
+                            input.selectionEnd = startPos + emoji.length;
+                            setNewMessage(input.value);
+                        }}
+                    />
                     <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={removeAttachment}
+                        onClick={handleSendMessage}
+                        disabled={
+                            isSending ||
+                            (!editingMessage && newMessage.trim() === "")
+                        }
                     >
-                        <X className="h-4 w-4" />
+                        {editingMessage ? (
+                            "Save"
+                        ) : (
+                            <>
+                                <Send className="h-5 w-5" />
+                                <span className="sr-only">Send Message</span>
+                            </>
+                        )}
                     </Button>
                 </div>
-            )}
-
-            <div className="p-4 space-y-2">
                 {editingMessage && (
-                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
-                        <span>Editing message</span>
+                    <div className="mt-1 select-none flex justify-between items-center text-xs text-muted-foreground">
+                        <div className="ml-12">Editing message</div>
                         <Button
                             variant="ghost"
                             size="sm"
-                            className="h-7 px-2"
-                            onClick={cancelEdit}
+                            className=" py-0 px-2"
+                            onClick={handleCancelEdit}
                         >
                             Cancel
                         </Button>
                     </div>
                 )}
-
-                <div className="flex items-end gap-2">
-                    <input
-                        type="file"
-                        ref={fileInputRef}
-                        className="hidden"
-                        onChange={handleFileChange}
-                    />
-
-                    <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        onClick={triggerFileInput}
-                    >
-                        <Paperclip className="h-5 w-5" />
-                    </Button>
-
-                    <Textarea
-                        value={newMessage}
-                        onChange={handleInputChange}
-                        onKeyDown={handleKeyDown}
-                        placeholder="Type a message..."
-                        className="flex-1 max-h-32"
-                        rows={1}
-                        ref={textareaRef}
-                    />
-
-                    <Button
-                        type="button"
-                        size="icon"
-                        onClick={handleSendMessage}
-                        disabled={
-                            (!newMessage.trim() && !attachment) || isFetching
-                        }
-                    >
-                        <Send className="h-5 w-5" />
-                    </Button>
-                </div>
             </div>
-
-            {/* Group Info Dialog */}
-            <Dialog open={showGroupInfo} onOpenChange={setShowGroupInfo}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>
-                            {conversation.type === "direct"
-                                ? "Conversation Info"
-                                : "Group Info"}
-                        </DialogTitle>
-                    </DialogHeader>
-
-                    <div className="space-y-4">
-                        <div className="flex flex-col items-center space-y-2">
-                            <Avatar className="h-24 w-24">
-                                <AvatarImage
-                                    src={conversationInfo.image || ""}
-                                />
-                                <AvatarFallback className="text-2xl">
-                                    {getInitials(conversationInfo.name)}
-                                </AvatarFallback>
-                            </Avatar>
-                            <h3 className="text-xl font-semibold">
-                                {conversationInfo.name}
-                            </h3>
-                            {conversationInfo.description && (
-                                <p className="text-sm text-muted-foreground text-center">
-                                    {conversationInfo.description}
-                                </p>
-                            )}
-                        </div>
-
-                        <div>
-                            <h4 className="text-sm font-medium mb-2">
-                                {conversation.type === "direct"
-                                    ? "Participants"
-                                    : "Members"}{" "}
-                                ({conversationInfo.membersCount})
-                            </h4>
-                            <div className="space-y-2 max-h-64 overflow-y-auto">
-                                {conversation.members.map((member) => (
-                                    <div
-                                        key={member.userId}
-                                        className="flex items-center justify-between"
-                                    >
-                                        <div className="flex items-center space-x-2">
-                                            <Avatar className="h-8 w-8">
-                                                <AvatarImage
-                                                    src={
-                                                        member.user.image || ""
-                                                    }
-                                                />
-                                                <AvatarFallback>
-                                                    {getInitials(
-                                                        member.user.name
-                                                    )}
-                                                </AvatarFallback>
-                                            </Avatar>
-                                            <div>
-                                                <p className="text-sm font-medium">
-                                                    {member.user.name}
-                                                </p>
-                                                <p className="text-xs text-muted-foreground">
-                                                    {member.role === "owner"
-                                                        ? "Owner"
-                                                        : member.role ===
-                                                          "admin"
-                                                        ? "Admin"
-                                                        : isUserOnline(
-                                                              member.userId
-                                                          )
-                                                        ? "Online"
-                                                        : "Offline"}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                </DialogContent>
-            </Dialog>
         </div>
     );
 }

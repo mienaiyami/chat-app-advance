@@ -1,204 +1,31 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect } from "react";
-import { useSocket } from "./socket-provider";
-import { useConversation } from "./conversation-provider";
 import { toast } from "sonner";
-import { api, type RouterInputs, type RouterOutputs } from "~/trpc/react";
+import { api, type RouterOutputs } from "~/trpc/react";
+import { useConversation } from "./conversation-provider";
+import type { Attachment } from "@repo/database";
 
 type Message = RouterOutputs["message"]["getMessages"]["messages"][number];
-type MessageInput = RouterInputs["message"]["sendMessage"];
 
-type MessageContextType = {
+interface SendMessageParams {
+    conversationId: string;
+    text: string;
+    repliedToId?: string;
+    attachment?: File;
+}
+
+interface MessageContextType {
     messages: Message[];
-    isFetching: boolean;
-    isFetchingNextPage: boolean;
-    isSending: boolean;
-    sendMessage: (input: MessageInput) => Promise<void>;
+    sendMessage: (params: SendMessageParams) => Promise<void>;
     editMessage: (messageId: string, text: string) => Promise<void>;
     deleteMessage: (messageId: string) => Promise<void>;
     markAsRead: () => Promise<void>;
-    replyToMessage: Message | null;
-    setReplyToMessage: (message: Message | null) => void;
-    loadMoreMessages: () => Promise<void>;
-    hasMoreMessages: boolean;
-};
+    isSending: boolean;
+    handleTyping: () => void;
+}
 
 const MessageContext = createContext<MessageContextType | null>(null);
-
-export function MessageProvider({ children }: { children: React.ReactNode }) {
-    const [messages, setMessages] = useState<Message[]>([]);
-    const [replyToMessage, setReplyToMessage] = useState<Message | null>(null);
-    const { socket } = useSocket();
-    const { activeConversationId } = useConversation();
-
-    const utils = api.useUtils();
-
-    useEffect(() => {
-        setMessages([]);
-        setReplyToMessage(null);
-    }, [activeConversationId]);
-
-    const {
-        data: messagesData,
-        fetchNextPage,
-        hasNextPage,
-        isFetchingNextPage,
-        isFetching,
-    } = api.message.getMessages.useInfiniteQuery(
-        {
-            conversationId: activeConversationId ?? "",
-        },
-        {
-            getNextPageParam: (lastPage) => lastPage.nextCursor,
-            enabled: !!activeConversationId,
-        }
-    );
-
-    const sendMessageMutation = api.message.sendMessage.useMutation({
-        onSuccess: async () => {
-            // await utils.message.getMessages.invalidate();
-
-            setReplyToMessage(null);
-        },
-        onError: (error) => {
-            toast.error("Failed to send message");
-            console.error(error);
-        },
-    });
-
-    const editMessageMutation = api.message.editMessage.useMutation({
-        onSuccess: async (updatedMessage) => {
-            // todo: update the message in the messages array
-        },
-        onError: (error) => {
-            toast.error("Failed to edit message");
-            console.error(error);
-        },
-    });
-
-    const deleteMessageMutation = api.message.deleteMessage.useMutation({
-        onSuccess: async ({ success }, { messageId }) => {
-            if (success) {
-                setMessages((prev) =>
-                    prev.filter((msg) => msg.id !== messageId)
-                );
-            } else {
-                toast.error("Failed to delete message");
-            }
-        },
-        onError: (error) => {
-            toast.error("Failed to delete message");
-            console.error(error);
-        },
-    });
-
-    const markAsReadMutation = api.conversation.markAsRead.useMutation({
-        onSuccess: async () => {
-            await utils.conversation.getAll.invalidate();
-        },
-        onError: (error) => {
-            toast.error("Failed to mark messages as read");
-            console.error(error);
-        },
-    });
-
-    useEffect(() => {
-        if (!socket || !activeConversationId) return;
-
-        const handleNewMessage = (message: Message) => {
-            if (message.conversationId === activeConversationId) {
-                setMessages((prev) => [...prev, message]);
-                markAsRead();
-            }
-        };
-
-        const handleMessageUpdated = (message: Message) => {
-            if (message.conversationId === activeConversationId) {
-                setMessages((prev) =>
-                    prev.map((msg) => (msg.id === message.id ? message : msg))
-                );
-            }
-        };
-
-        const handleMessageDeleted = ({
-            messageId,
-            conversationId,
-        }: {
-            messageId: string;
-            conversationId: string;
-        }) => {
-            if (conversationId === activeConversationId) {
-                setMessages((prev) =>
-                    prev.filter((msg) => msg.id !== messageId)
-                );
-            }
-        };
-
-        socket.on("message:new", handleNewMessage);
-        socket.on("message:updated", handleMessageUpdated);
-        socket.on("message:deleted", handleMessageDeleted);
-
-        return () => {
-            socket.off("message:new", handleNewMessage);
-            socket.off("message:updated", handleMessageUpdated);
-            socket.off("message:deleted", handleMessageDeleted);
-        };
-    }, [socket, activeConversationId]);
-
-    const sendMessage = async (input: MessageInput) => {
-        if (!activeConversationId) return;
-        sendMessageMutation.mutate({
-            conversationId: input.conversationId,
-            text: input.text,
-            repliedToId: input.repliedToId,
-            attachment: input.attachment,
-        });
-    };
-
-    const editMessage = async (messageId: string, text: string) => {
-        editMessageMutation.mutate({ messageId, text });
-    };
-
-    const deleteMessage = async (messageId: string) => {
-        deleteMessageMutation.mutate({ messageId });
-    };
-
-    const markAsRead = async () => {
-        if (!activeConversationId) return;
-
-        markAsReadMutation.mutate({
-            conversationId: activeConversationId,
-        });
-    };
-
-    const loadMoreMessages = async () => {
-        if (!hasNextPage || isFetchingNextPage || !activeConversationId) return;
-
-        fetchNextPage();
-    };
-
-    const value: MessageContextType = {
-        messages,
-        isFetching,
-        isFetchingNextPage,
-        isSending: sendMessageMutation.isPending,
-        sendMessage,
-        editMessage,
-        deleteMessage,
-        markAsRead,
-        replyToMessage,
-        setReplyToMessage,
-        loadMoreMessages,
-        hasMoreMessages: hasNextPage,
-    };
-
-    return (
-        <MessageContext.Provider value={value}>
-            {children}
-        </MessageContext.Provider>
-    );
-}
 
 export const useMessage = () => {
     const context = useContext(MessageContext);
@@ -206,4 +33,197 @@ export const useMessage = () => {
         throw new Error("useMessage must be used within a MessageProvider");
     }
     return context;
+};
+
+export const MessageProvider = ({
+    children,
+}: {
+    children: React.ReactNode;
+}) => {
+    const { activeConversationId } = useConversation();
+    const [messages, setMessages] = useState<Message[]>([]);
+    const [isSending, setIsSending] = useState(false);
+    const [typingTimeout, setTypingTimeout] = useState<NodeJS.Timeout | null>(
+        null
+    );
+
+    const { data: messagesData, refetch } = api.message.getMessages.useQuery(
+        {
+            conversationId: activeConversationId || "",
+            limit: 100,
+        },
+        {
+            enabled: !!activeConversationId,
+            refetchOnWindowFocus: false,
+        }
+    );
+
+    useEffect(() => {
+        if (messagesData?.messages) {
+            setMessages(messagesData.messages);
+        }
+    }, [messagesData]);
+
+    const sendMessageMutation = api.message.sendMessage.useMutation({
+        onSuccess: () => {
+            refetch();
+        },
+        onError: (error) => {
+            toast.error(error.message || "Failed to send message");
+        },
+    });
+
+    const editMessageMutation = api.message.editMessage.useMutation({
+        onSuccess: () => {
+            refetch();
+        },
+        onError: (error) => {
+            toast.error(error.message || "Failed to edit message");
+        },
+    });
+
+    const deleteMessageMutation = api.message.deleteMessage.useMutation({
+        onSuccess: () => {
+            refetch();
+        },
+        onError: (error) => {
+            toast.error(error.message || "Failed to delete message");
+        },
+    });
+
+    const markAsReadMutation = api.conversation.markAsRead.useMutation({
+        onError: (error) => {
+            console.error("Failed to mark as read:", error);
+        },
+    });
+
+    // Handle file upload (simplified)
+    const handleFileUpload = async (file: File): Promise<Attachment> => {
+        // This would normally upload to a storage service like S3
+        // For this example, we'll just pretend we uploaded it successfully
+
+        // Determine the file type
+        const fType = file.type.startsWith("image/")
+            ? "image"
+            : file.type.startsWith("video/")
+            ? "video"
+            : file.type.startsWith("audio/")
+            ? "audio"
+            : "file";
+
+        // Return mock attachment info
+        return {
+            name: file.name,
+            size: file.size,
+            fType,
+            url: URL.createObjectURL(file), // In a real app, this would be the uploaded file URL
+            mimeType: file.type,
+        };
+    };
+
+    const sendMessage = async ({
+        conversationId,
+        text,
+        repliedToId,
+        attachment,
+    }: SendMessageParams) => {
+        if (!text.trim() && !attachment) return;
+
+        setIsSending(true);
+        try {
+            let attachmentData: Attachment | undefined;
+
+            if (attachment) {
+                attachmentData = await handleFileUpload(attachment);
+            }
+
+            await sendMessageMutation.mutateAsync({
+                conversationId,
+                text: text.trim(),
+                repliedToId,
+                attachment: attachmentData,
+            });
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setIsSending(false);
+        }
+    };
+
+    const editMessage = async (messageId: string, text: string) => {
+        if (!text.trim()) return;
+
+        try {
+            await editMessageMutation.mutateAsync({
+                messageId,
+                text: text.trim(),
+            });
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
+    const deleteMessage = async (messageId: string) => {
+        try {
+            await deleteMessageMutation.mutateAsync({
+                messageId,
+            });
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
+    const markAsRead = async () => {
+        if (!activeConversationId) return Promise.resolve();
+
+        try {
+            await markAsReadMutation.mutateAsync({
+                conversationId: activeConversationId,
+            });
+            return Promise.resolve();
+        } catch (error) {
+            console.error(error);
+            return Promise.reject(error);
+        }
+    };
+    const handleTyping = () => {
+        // In a real app, you would emit a socket event to notify other users
+        // that the current user is typing
+
+        if (typingTimeout) {
+            clearTimeout(typingTimeout);
+        }
+
+        // Set a timeout to clear the typing indicator after 2 seconds of inactivity
+        const timeout = setTimeout(() => {
+            // In a real app, emit a socket event to clear typing indicator
+        }, 2000);
+
+        setTypingTimeout(timeout);
+    };
+
+    // Clean up typing timeout on unmount
+    useEffect(() => {
+        return () => {
+            if (typingTimeout) {
+                clearTimeout(typingTimeout);
+            }
+        };
+    }, [typingTimeout]);
+
+    const value = {
+        messages,
+        sendMessage,
+        editMessage,
+        deleteMessage,
+        markAsRead,
+        isSending,
+        handleTyping,
+    };
+
+    return (
+        <MessageContext.Provider value={value}>
+            {children}
+        </MessageContext.Provider>
+    );
 };

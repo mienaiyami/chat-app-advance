@@ -1,359 +1,205 @@
 "use client";
 
 import { useState } from "react";
-import { useConversation } from "~/providers/conversation-provider";
-import { useSession } from "next-auth/react";
-import { useRouter, usePathname } from "next/navigation";
 import { Button } from "~/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "~/components/ui/avatar";
 import { Input } from "~/components/ui/input";
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from "~/components/ui/dialog";
-import { X, PlusCircle, Search, Plus, Users } from "lucide-react";
-import { cn } from "~/lib/utils";
-import { format } from "date-fns";
+import { ScrollArea } from "~/components/ui/scroll-area";
+import { Avatar, AvatarFallback, AvatarImage } from "~/components/ui/avatar";
+import { Search, VolumeOff } from "lucide-react";
+import { TooltipProvider } from "~/components/ui/tooltip";
 import { api } from "~/trpc/react";
-import { useDebounce } from "~/hooks/use-debounce";
-
+import { useConversation } from "~/providers/conversation-provider";
+import { formatDate } from "~/lib/utils";
+import { useSession } from "next-auth/react";
+import { toast } from "sonner";
+import { cn } from "~/lib/utils";
+import ProfileDialog from "./profile-dialog";
+import AddContactDialog from "./add-contact-dialog";
+import CreateGroupDialog from "./create-group-dialog";
+import { useRouter } from "next/navigation";
 export default function Sidebar() {
+    const [searchQuery, setSearchQuery] = useState("");
     const { data: session } = useSession();
+
+    const { conversations, activeConversationId, isLoading } =
+        useConversation();
     const router = useRouter();
-    const pathname = usePathname();
-    const [query, setQuery] = useState("");
-    const debouncedQuery = useDebounce(query, 500);
-    const [createGroupDialogOpen, setCreateGroupDialogOpen] = useState(false);
-    const [newGroupName, setNewGroupName] = useState("");
-    const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
 
-    const {
-        conversations,
-        activeConversationId,
-        setActiveConversationId,
-        createDirectConversation,
-        createGroupConversation,
-        isLoading,
-    } = useConversation();
-
-    const usersQuery = api.user.search.useQuery(
-        { query: debouncedQuery },
-        {
-            enabled: !!debouncedQuery,
-        }
-    );
-
-    const filteredConversations = conversations.filter((conversation) => {
-        // For direct messages, filter by the other user's name
-        if (conversation.type === "direct") {
-            const otherMember = conversation.members.find(
-                (member) => member.userId !== session?.user.id
-            );
-            return otherMember?.user.name
-                ?.toLowerCase()
-                .includes(query.toLowerCase());
-        }
-        // For groups, filter by group name
-        return conversation.name?.toLowerCase().includes(query.toLowerCase());
+    const userSettings = api.user.getSettings.useQuery(undefined, {
+        enabled: !!session?.user.id,
     });
 
-    const handleCreateDirectChat = async (targetUserId: string) => {
-        try {
-            const conversationId = await createDirectConversation.mutateAsync({
-                targetUserId,
-            });
-            router.push(`/chat/direct/${conversationId}`);
-        } catch (error) {
-            console.error("Failed to create direct chat", error);
-        }
-    };
+    const onlineContacts = api.user.getOnlineContacts.useQuery(undefined, {
+        enabled: !!session?.user.id,
+    });
 
-    const handleCreateGroup = async () => {
-        if (!newGroupName.trim() || selectedUsers.length === 0) return;
-
-        try {
-            const groupId = await createGroupConversation.mutateAsync({
-                name: newGroupName,
-                members: selectedUsers,
-            });
-            setCreateGroupDialogOpen(false);
-            setNewGroupName("");
-            setSelectedUsers([]);
-            router.push(`/chat/group/${groupId}`);
-        } catch (error) {
-            console.error("Failed to create group", error);
-        }
-    };
-
-    const handleSelectUser = (userId: string) => {
-        setSelectedUsers((prev) =>
-            prev.includes(userId)
-                ? prev.filter((id) => id !== userId)
-                : [...prev, userId]
+    if (isLoading || userSettings.isLoading) {
+        return (
+            <div className="flex w-1/2 flex-shrink-0 select-none flex-col rounded-l-lg border sm:w-72 lg:w-96">
+                Loading...
+            </div>
         );
-    };
+    }
 
-    const navigateToChat = (id: string, type: "direct" | "group") => {
-        setActiveConversationId(id);
-        router.push(`/chat/${type}/${id}`);
-    };
+    const filteredConversations = conversations.filter(
+        (conversation) =>
+            conversation.name
+                ?.toLowerCase()
+                .includes(searchQuery.toLowerCase()) ||
+            conversation.members.some((member) =>
+                member.user.name
+                    ?.toLowerCase()
+                    .includes(searchQuery.toLowerCase())
+            )
+    );
 
-    const getConversationName = (conversation: (typeof conversations)[0]) => {
-        if (conversation.type === "group") {
-            return conversation.name;
-        }
-
-        const otherMember = conversation.members.find(
-            (member) => member.userId !== session?.user.id
-        );
-
-        return otherMember?.user.name || "Unknown";
-    };
-
-    const getConversationImage = (conversation: (typeof conversations)[0]) => {
-        if (conversation.type === "group") {
-            return conversation.image;
-        }
-
-        const otherMember = conversation.members.find(
-            (member) => member.userId !== session?.user.id
-        );
-
-        return otherMember?.user.image;
-    };
-
-    const getInitials = (name: string | null | undefined) => {
-        if (!name) return "?";
-        return name
-            .split(" ")
-            .map((n) => n[0])
-            .slice(0, 2)
-            .join("")
-            .toUpperCase();
+    const handleSelectConversation = (conversationId: string) => {
+        router.push(`/chat/${conversationId}`);
     };
 
     return (
-        <div className="flex flex-col w-80 border-r border-border h-full">
-            <div className="p-4 flex justify-between items-center border-b">
-                <h2 className="text-xl font-semibold">Chats</h2>
-                <div className="flex space-x-2">
-                    <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => setCreateGroupDialogOpen(true)}
-                    >
-                        <Users className="h-5 w-5" />
-                    </Button>
+        <div className="w-full flex-shrink-0 border rounded-l-lg flex flex-col ">
+            <TooltipProvider
+                delayDuration={500}
+                disableHoverableContent
+                skipDelayDuration={500}
+            >
+                <div className="p-4 border-b h-18 flex flex-row gap-1">
+                    <ProfileDialog />
+                    <AddContactDialog />
+                    <CreateGroupDialog />
                 </div>
-            </div>
-
-            <div className="p-3">
-                <div className="relative">
-                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <div className="p-4 relative">
+                    <Search
+                        size={"1.3em"}
+                        className="text-muted-foreground pointer-events-none absolute top top-1/2 -translate-y-1/2 left-6"
+                    />
                     <Input
-                        placeholder="Search conversations..."
+                        placeholder="Search"
                         className="pl-8"
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
                     />
                 </div>
-            </div>
+                <ScrollArea className="flex-grow">
+                    {(() => {
+                        if (filteredConversations.length === 0) {
+                            return (
+                                <div className="flex-grow flex items-center justify-center select-none">
+                                    <span className="text-muted-foreground">
+                                        No contacts/chat found
+                                    </span>
+                                </div>
+                            );
+                        }
 
-            <div className="flex-1 overflow-auto">
-                {isLoading ? (
-                    <div className="flex justify-center p-4">
-                        <p>Loading conversations...</p>
-                    </div>
-                ) : filteredConversations.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center p-4 h-32">
-                        <p className="text-sm text-muted-foreground">
-                            No conversations found
-                        </p>
-                    </div>
-                ) : (
-                    <div className="space-y-1 p-2">
-                        {filteredConversations.map((conversation) => {
-                            const isActive =
-                                activeConversationId === conversation.id;
-                            const conversationName =
-                                getConversationName(conversation);
-                            const avatarSrc =
-                                getConversationImage(conversation);
-                            const initials = getInitials(conversationName);
-                            const lastMessageText =
-                                conversation.lastMessage?.text ||
-                                "No messages yet";
-                            const lastMessageTime = conversation.lastMessage
-                                ?.createdAt
-                                ? format(
-                                      new Date(
-                                          conversation.lastMessage.createdAt
-                                      ),
-                                      "HH:mm"
-                                  )
-                                : "";
+                        return filteredConversations.map((conversation) => {
+                            // Get the other user in direct conversations
+                            const otherUser =
+                                conversation.type === "direct"
+                                    ? conversation.members.find(
+                                          (member) =>
+                                              member.userId !==
+                                              session?.user?.id
+                                      )?.user
+                                    : null;
+
+                            const displayName =
+                                conversation.type === "direct"
+                                    ? otherUser?.name || "Unknown User"
+                                    : conversation.name || "Unnamed Group";
+
+                            const displayPicture =
+                                conversation.type === "direct"
+                                    ? otherUser?.image || ""
+                                    : conversation.image || "";
+
+                            const conversationId = conversation.id;
+
+                            // const isMuted =
+                            //     userSettings.data?.mutedChats?.includes(
+                            //         conversationId
+                            //     ) || false;
+
+                            const unreadCount = conversation.unreadCount || 0;
 
                             return (
-                                <button
-                                    key={conversation.id}
+                                <Button
+                                    variant="ghost"
+                                    key={conversationId}
                                     className={cn(
-                                        "w-full flex items-center space-x-3 p-2 rounded-lg transition-colors text-left",
-                                        isActive
-                                            ? "bg-accent text-accent-foreground"
-                                            : "hover:bg-muted"
+                                        "flex w-full space-x-2 items-center h-full rounded-none p-2 hover:bg-accent first:border-t border-b",
+                                        activeConversationId === conversationId
+                                            ? "bg-accent"
+                                            : ""
                                     )}
                                     onClick={() =>
-                                        navigateToChat(
-                                            conversation.id,
-                                            conversation.type ?? "direct"
-                                        )
+                                        handleSelectConversation(conversationId)
                                     }
                                 >
-                                    <Avatar>
-                                        <AvatarImage src={avatarSrc || ""} />
+                                    <Avatar className="h-10 w-10 mr-4">
+                                        <AvatarImage
+                                            src={displayPicture}
+                                            alt={displayName}
+                                        />
                                         <AvatarFallback>
-                                            {initials}
+                                            {displayName
+                                                .slice(0, 2)
+                                                .toUpperCase()}
                                         </AvatarFallback>
                                     </Avatar>
-                                    <div className="flex-1 overflow-hidden">
-                                        <div className="flex justify-between items-center">
-                                            <p className="font-medium truncate">
-                                                {conversationName}
-                                            </p>
-                                            {lastMessageTime && (
-                                                <span className="text-xs text-muted-foreground">
-                                                    {lastMessageTime}
+                                    <div className="flex-grow min-w-0 flex flex-col items-start">
+                                        <div className="flex flex-row w-full">
+                                            <span className="font-medium truncate">
+                                                {displayName}
+                                            </span>
+                                            <span className="ml-auto font-xs text-muted-foreground">
+                                                {conversation.lastMessageAt
+                                                    ? formatDate(
+                                                          conversation.lastMessageAt
+                                                      )
+                                                    : "-"}
+                                            </span>
+                                        </div>
+                                        <div className="flex flex-row w-full items-center">
+                                            <span
+                                                className="text-sm text-muted-foreground truncate"
+                                                title={
+                                                    conversation.lastMessage ||
+                                                    ""
+                                                }
+                                            >
+                                                {conversation.lastMessage
+                                                    ? conversation.lastMessage
+                                                          .replace("\n", " ")
+                                                          .slice(0, 20) +
+                                                      (conversation.lastMessage
+                                                          .length > 20
+                                                          ? "..."
+                                                          : "")
+                                                    : "No messages yet"}
+                                            </span>
+                                            {/* {!isMuted && unreadCount > 0 && (
+                                                <span className="ml-auto bg-primary text-secondary rounded-full aspect-square w-4 text-xs">
+                                                    {unreadCount}
                                                 </span>
                                             )}
+                                            {isMuted && (
+                                                <span className="ml-auto text-muted-foreground">
+                                                    <VolumeOff className="w-4 h-4" />
+                                                    <span className="sr-only">
+                                                        Muted Chat
+                                                    </span>
+                                                </span>
+                                            )} */}
                                         </div>
-                                        <p className="text-sm text-muted-foreground truncate">
-                                            {lastMessageText}
-                                        </p>
                                     </div>
-                                    {conversation.unreadCount > 0 && (
-                                        <div className="bg-primary text-primary-foreground text-xs font-medium rounded-full min-w-5 h-5 flex items-center justify-center px-1.5">
-                                            {conversation.unreadCount}
-                                        </div>
-                                    )}
-                                </button>
+                                </Button>
                             );
-                        })}
-                    </div>
-                )}
-            </div>
-
-            {/* Create Group Dialog */}
-            <Dialog
-                open={createGroupDialogOpen}
-                onOpenChange={setCreateGroupDialogOpen}
-            >
-                <DialogContent className="sm:max-w-md">
-                    <DialogHeader>
-                        <DialogTitle>Create New Group</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4 py-2">
-                        <div>
-                            <Input
-                                placeholder="Group name"
-                                value={newGroupName}
-                                onChange={(e) =>
-                                    setNewGroupName(e.target.value)
-                                }
-                                className="mb-4"
-                            />
-                            <div className="relative">
-                                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                                <Input
-                                    placeholder="Search users..."
-                                    className="pl-8"
-                                    value={query}
-                                    onChange={(e) => setQuery(e.target.value)}
-                                />
-                            </div>
-                        </div>
-
-                        {selectedUsers.length > 0 && (
-                            <div className="flex flex-wrap gap-2">
-                                {selectedUsers.map((userId) => {
-                                    const user = usersQuery.data?.find(
-                                        (u) => u.id === userId
-                                    );
-                                    return (
-                                        <div
-                                            key={userId}
-                                            className="flex items-center bg-muted rounded-full pl-2 pr-1 py-1"
-                                        >
-                                            <span className="text-sm mr-1">
-                                                {user?.name || userId}
-                                            </span>
-                                            <button
-                                                onClick={() =>
-                                                    handleSelectUser(userId)
-                                                }
-                                                className="h-5 w-5 rounded-full bg-background flex items-center justify-center"
-                                            >
-                                                <X className="h-3 w-3" />
-                                            </button>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-
-                        <div className="max-h-52 overflow-y-auto">
-                            {usersQuery.data
-                                ?.filter((user) => user.id !== session?.user.id)
-                                .map((user) => (
-                                    <div
-                                        key={user.id}
-                                        className={cn(
-                                            "flex items-center space-x-3 p-2 rounded-lg cursor-pointer",
-                                            selectedUsers.includes(user.id)
-                                                ? "bg-accent text-accent-foreground"
-                                                : "hover:bg-muted"
-                                        )}
-                                        onClick={() =>
-                                            handleSelectUser(user.id)
-                                        }
-                                        onKeyUp={(e) => {
-                                            if (e.key === "Enter") {
-                                                handleSelectUser(user.id);
-                                            }
-                                        }}
-                                    >
-                                        <Avatar>
-                                            <AvatarImage
-                                                src={user.image || ""}
-                                            />
-                                            <AvatarFallback>
-                                                {getInitials(user.name)}
-                                            </AvatarFallback>
-                                        </Avatar>
-                                        <div className="flex-1">
-                                            <p className="font-medium">
-                                                {user.name}
-                                            </p>
-                                        </div>
-                                    </div>
-                                ))}
-                        </div>
-                    </div>
-                    <div className="flex justify-end">
-                        <Button
-                            onClick={handleCreateGroup}
-                            disabled={
-                                !newGroupName.trim() ||
-                                selectedUsers.length === 0
-                            }
-                        >
-                            Create Group
-                        </Button>
-                    </div>
-                </DialogContent>
-            </Dialog>
+                        });
+                    })()}
+                </ScrollArea>
+            </TooltipProvider>
         </div>
     );
 }

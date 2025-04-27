@@ -2,12 +2,12 @@
 
 import React, { useEffect } from "react";
 import { useParams } from "next/navigation";
-import ChatArea from "~/app/(chat)/chat/_component/chat-area";
+import { ChatArea } from "~/app/(chat)/chat/_component/chat-area";
 import { useConversation } from "~/providers/conversation-provider";
 
 export default function DirectChatPage() {
     const params = useParams();
-    const { setActiveConversationId } = useConversation();
+    const { setActiveConversation } = useConversation();
 
     const conversationId = params.id as string;
     const messageId = params.messageId
@@ -16,13 +16,13 @@ export default function DirectChatPage() {
 
     useEffect(() => {
         if (conversationId) {
-            setActiveConversationId(conversationId);
+            setActiveConversation(conversationId);
         }
 
         return () => {
-            setActiveConversationId(null);
+            setActiveConversation("");
         };
-    }, [conversationId, setActiveConversationId]);
+    }, [conversationId, setActiveConversation]);
 
-    return <ChatArea conversationId={conversationId} messageId={messageId} />;
+    return <ChatArea />;
 }

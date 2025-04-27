@@ -9,6 +9,7 @@
     "db:migrate": "turbo db:migrate",
     "db:studio": "turbo db:studio",
     "db:generate": "turbo db:generate",
+    "db:push": "turbo db:push",
     "typecheck": "turbo typecheck",
     "clean": "rm -rf .turbo node_modules"
   },

@@ -1,6 +1,6 @@
 import { db } from "@repo/database";
 import { users } from "@repo/database";
-import { randomUUID } from "crypto";
+import { randomUUID } from "node:crypto";
 
 function generateRandomName() {
     const firstNames = [
@@ -49,8 +49,9 @@ function generateRandomName() {
     ];
 
     const firstName =
-        firstNames[Math.floor(Math.random() * firstNames.length)]!;
-    const lastName = lastNames[Math.floor(Math.random() * lastNames.length)]!;
+        firstNames[Math.floor(Math.random() * firstNames.length)] ?? "";
+    const lastName =
+        lastNames[Math.floor(Math.random() * lastNames.length)] ?? "";
 
     return { firstName, lastName, fullName: `${firstName} ${lastName}` };
 }
@@ -62,17 +63,18 @@ function generateRandomEmail(firstName: string, lastName: string) {
 }
 
 function generateRandomAvatar() {
-    const avatarIds = [
-        "1b671a64-40d5-491e-99b0-da01ff1f3341",
-        "2c672b64-40d5-491e-99b0-da01ff1f3342",
-        "3d673c64-40d5-491e-99b0-da01ff1f3343",
-        "4e674d64-40d5-491e-99b0-da01ff1f3344",
-        "5f675e64-40d5-491e-99b0-da01ff1f3345",
-        "6g676f64-40d5-491e-99b0-da01ff1f3346",
-    ];
-
-    const id = avatarIds[Math.floor(Math.random() * avatarIds.length)];
-    return `https://avatars.githubusercontent.com/u/${id}?v=4`;
+    // const avatarIds = [
+    //     "1b671a64-40d5-491e-99b0-da01ff1f3341",
+    //     "2c672b64-40d5-491e-99b0-da01ff1f3342",
+    //     "3d673c64-40d5-491e-99b0-da01ff1f3343",
+    //     "4e674d64-40d5-491e-99b0-da01ff1f3344",
+    //     "5f675e64-40d5-491e-99b0-da01ff1f3345",
+    //     "6g676f64-40d5-491e-99b0-da01ff1f3346",
+    // ];
+    //
+    // const id = avatarIds[Math.floor(Math.random() * avatarIds.length)];
+    // return `https://avatars.githubusercontent.com/u/${id}?v=4`;
+    return "https://avatar.iran.liara.run/public";
 }
 
 const STUDENT_COUNT = 20;
@@ -104,9 +106,9 @@ async function seedMockUsers() {
         console.log("✅ Mock users seeded successfully!");
 
         console.log("\nSample users created:");
-        mockUsers.slice(0, 5).forEach((user) => {
+        for (const user of mockUsers.slice(0, 5)) {
             console.log(`- ${user.name} (${user.email})`);
-        });
+        }
     } catch (error) {
         console.error("❌ Failed to seed users:", error);
         process.exit(1);

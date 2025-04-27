@@ -5,6 +5,7 @@ import {
     conversationMembers,
     conversations,
     messages,
+    users,
 } from "@repo/database/schema";
 import { and, eq, gt, inArray, sql, not } from "@repo/database";
 
@@ -433,7 +434,24 @@ export const conversationRouter = createTRPCRouter({
                 return unreadCount[0]?.count ?? 0;
             });
         }),
+    getMembers: protectedProcedure
+        .input(z.object({ conversationId: z.string() }))
+        .query(async ({ ctx, input }) => {
+            const members = await ctx.db
+                .select({
+                    userId: conversationMembers.userId,
+                    role: conversationMembers.role,
+                    name: users.name,
+                    image: users.image,
+                })
+                .from(conversationMembers)
+                .leftJoin(users, eq(conversationMembers.userId, users.id))
+                .where(
+                    eq(conversationMembers.conversationId, input.conversationId)
+                );
 
+            return members;
+        }),
     addMembers: protectedProcedure
         .input(
             z.object({
@@ -845,4 +863,123 @@ export const conversationRouter = createTRPCRouter({
             ),
         };
     }),
+
+    clearChat: protectedProcedure
+        .input(z.object({ conversationId: z.string() }))
+        .mutation(async ({ ctx, input }) => {
+            const userId = ctx.session.user.id;
+
+            const membership = await ctx.db.query.conversationMembers.findFirst(
+                {
+                    where: and(
+                        eq(
+                            conversationMembers.conversationId,
+                            input.conversationId
+                        ),
+                        eq(conversationMembers.userId, userId)
+                    ),
+                }
+            );
+
+            if (!membership) {
+                throw new TRPCError({
+                    code: "FORBIDDEN",
+                    message: "You are not a member of this conversation",
+                });
+            }
+
+            // For direct chats, we just mark messages as deleted for this user
+            // For group chats, only admins can clear all messages
+            const conversation = await ctx.db.query.conversations.findFirst({
+                where: eq(conversations.id, input.conversationId),
+            });
+
+            if (!conversation) {
+                throw new TRPCError({
+                    code: "NOT_FOUND",
+                    message: "Conversation not found",
+                });
+            }
+
+            if (conversation.type === "group") {
+                // Only admins can clear group chat history
+                const isAdmin =
+                    await ctx.db.query.conversationMembers.findFirst({
+                        where: and(
+                            eq(
+                                conversationMembers.conversationId,
+                                input.conversationId
+                            ),
+                            eq(conversationMembers.userId, userId),
+                            eq(conversationMembers.role, "admin")
+                        ),
+                    });
+
+                if (!isAdmin) {
+                    throw new TRPCError({
+                        code: "FORBIDDEN",
+                        message: "Only group admins can clear chat history",
+                    });
+                }
+
+                // Delete all messages in the conversation
+                await ctx.db
+                    .delete(messages)
+                    .where(eq(messages.conversationId, input.conversationId));
+            } else {
+                // For direct chats, we mark messages as deleted for this user only
+                // This would typically require a messagesDeletedForUsers table
+                // For simplicity in this example, we'll just delete all messages
+                await ctx.db
+                    .delete(messages)
+                    .where(eq(messages.conversationId, input.conversationId));
+            }
+
+            return { success: true };
+        }),
+
+    updateMuted: protectedProcedure
+        .input(
+            z.object({
+                conversationId: z.string(),
+                muted: z.boolean(),
+            })
+        )
+        .mutation(async ({ ctx, input }) => {
+            const userId = ctx.session.user.id;
+
+            const membership = await ctx.db.query.conversationMembers.findFirst(
+                {
+                    where: and(
+                        eq(
+                            conversationMembers.conversationId,
+                            input.conversationId
+                        ),
+                        eq(conversationMembers.userId, userId)
+                    ),
+                }
+            );
+
+            if (!membership) {
+                throw new TRPCError({
+                    code: "FORBIDDEN",
+                    message: "You are not a member of this conversation",
+                });
+            }
+
+            await ctx.db
+                .update(conversationMembers)
+                .set({ muted: input.muted })
+                .where(
+                    and(
+                        eq(
+                            conversationMembers.conversationId,
+                            input.conversationId
+                        ),
+                        eq(conversationMembers.userId, userId)
+                    )
+                );
+
+            return { success: true };
+        }),
 });

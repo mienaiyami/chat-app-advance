@@ -7,6 +7,7 @@ import { SessionProvider, SocketProvider } from "~/components";
 import { ThemeProvider } from "~/components/theme/theme-provider";
 import { env } from "~/env";
 import { TRPCReactProvider } from "~/trpc/react";
+import { api } from "~/trpc/server";
 
 const inter = Inter({
     subsets: ["latin"],
@@ -25,6 +26,10 @@ export default async function RootLayout({
     children: React.ReactNode;
 }) {
     const session = await auth();
+    // const users = await api.user.search({
+    //     query: "@",
+    // });
+    // console.log(users[0]);
 
     return (
         <html lang="en">

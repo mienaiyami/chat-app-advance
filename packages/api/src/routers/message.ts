@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "../trpc";
-import { eq, and, desc, sql, gt, not } from "@repo/database";
+import { eq, and, desc, sql, gt, not, isNull } from "@repo/database";
 import {
     users,
     messages,
@@ -59,7 +59,10 @@ export const messageRouter = createTRPCRouter({
             }
 
             const query = ctx.db.query.messages.findMany({
-                where: eq(messages.conversationId, input.conversationId),
+                where: and(
+                    eq(messages.conversationId, input.conversationId),
+                    isNull(messages.deletedAt)
+                ),
                 orderBy: (messages, { desc }) => [desc(messages.createdAt)],
                 limit: input.limit,
                 offset: input.cursor ? input.cursor : undefined,
@@ -76,7 +79,12 @@ export const messageRouter = createTRPCRouter({
             const totalCount = await ctx.db
                 .select({ count: sql`count(*)`.mapWith(Number) })
                 .from(messages)
-                .where(eq(messages.conversationId, input.conversationId));
+                .where(
+                    and(
+                        eq(messages.conversationId, input.conversationId),
+                        isNull(messages.deletedAt)
+                    )
+                );
 
             const conversationMessages = await query;
 
@@ -94,7 +102,7 @@ export const messageRouter = createTRPCRouter({
                 );
 
             return {
-                messages: conversationMessages,
+                messages: conversationMessages.reverse(),
                 nextCursor: input.cursor
                     ? Number(input.cursor) + conversationMessages.length
                     : conversationMessages.length,

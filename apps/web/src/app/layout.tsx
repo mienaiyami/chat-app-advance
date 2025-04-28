@@ -8,6 +8,7 @@ import { ThemeProvider } from "~/components/theme/theme-provider";
 import { env } from "~/env";
 import { TRPCReactProvider } from "~/trpc/react";
 import { api } from "~/trpc/server";
+import { Toaster } from "~/components/ui/sonner";
 
 const inter = Inter({
     subsets: ["latin"],
@@ -32,7 +33,7 @@ export default async function RootLayout({
     // console.log(users[0]);
 
     return (
-        <html lang="en">
+        <html lang="en" suppressHydrationWarning>
             <body className={`font-sans ${inter.variable}`}>
                 <TRPCReactProvider>
                     <ThemeProvider
@@ -44,6 +45,7 @@ export default async function RootLayout({
                         <SessionProvider session={session}>
                             <SocketProvider>{children}</SocketProvider>
                         </SessionProvider>
+                        <Toaster richColors />
                     </ThemeProvider>
                 </TRPCReactProvider>
             </body>

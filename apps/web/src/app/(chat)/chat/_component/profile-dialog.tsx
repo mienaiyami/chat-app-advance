@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { User, Moon, Sun, LogOut, Loader2 } from "lucide-react";
+import { User, Moon, Sun, LogOut, Loader2, Upload } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import {
     Dialog,
@@ -30,11 +30,14 @@ import {
 } from "~/components/ui/select";
 import { useTheme } from "next-themes";
 import { useRouter } from "next/navigation";
+import { useUploadThing } from "~/lib/uploadthing";
+
 export default function ProfileDialog() {
     const { data: session } = useSession();
     const [open, setOpen] = useState(false);
     const [userName, setUserName] = useState("");
     const [avatarUrl, setAvatarUrl] = useState("");
+    const [isUploading, setIsUploading] = useState(false);
     const { theme, setTheme } = useTheme();
     const utils = api.useUtils();
 
@@ -45,6 +48,23 @@ export default function ProfileDialog() {
         api.user.getSettings.useQuery(undefined, {
             enabled: open,
         });
+
+    const { startUpload, isUploading: isUploadingAvatar } = useUploadThing(
+        "avatarUploader",
+        {
+            onClientUploadComplete: (res) => {
+                if (res && res[0]) {
+                    setAvatarUrl(res[0].ufsUrl);
+                    setIsUploading(false);
+                    toast.success("Avatar uploaded successfully");
+                }
+            },
+            onUploadError: (error) => {
+                toast.error(`Error uploading avatar: ${error.message}`);
+                setIsUploading(false);
+            },
+        }
+    );
 
     const updateProfile = api.user.updateProfile.useMutation({
         onSuccess: () => {
@@ -90,6 +110,24 @@ export default function ProfileDialog() {
 
     const handleSignOut = async () => {
         await signOut({ callbackUrl: "/signin" });
+    };
+
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        if (file.size > 4 * 1024 * 1024) {
+            toast.error("File too large. Maximum size is 4MB");
+            return;
+        }
+
+        if (!file.type.startsWith("image/")) {
+            toast.error("Only image files are allowed");
+            return;
+        }
+
+        setIsUploading(true);
+        startUpload([file]);
     };
 
     const isLoading = isLoadingUser || isLoadingSettings;
@@ -159,21 +197,44 @@ export default function ProfileDialog() {
                                     </div>
                                     <div className="space-y-2">
                                         <Label htmlFor="avatar">
-                                            Avatar URL
+                                            Profile Picture
                                         </Label>
-                                        <Input
-                                            id="avatar"
-                                            placeholder="https://example.com/avatar.jpg"
-                                            value={avatarUrl}
-                                            onChange={(e) =>
-                                                setAvatarUrl(e.target.value)
-                                            }
-                                        />
+                                        <div className="flex gap-2 items-end">
+                                            <Input
+                                                id="avatar"
+                                                type="file"
+                                                className="flex-1"
+                                                accept="image/*"
+                                                onChange={handleFileUpload}
+                                                disabled={
+                                                    isUploading ||
+                                                    isUploadingAvatar
+                                                }
+                                            />
+                                            {(isUploading ||
+                                                isUploadingAvatar) && (
+                                                <div className="flex items-center">
+                                                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                                    <span className="text-sm">
+                                                        Uploading...
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </div>
+                                        {avatarUrl && (
+                                            <div className="text-sm text-muted-foreground break-all mt-1">
+                                                Current: {avatarUrl}
+                                            </div>
+                                        )}
                                     </div>
                                     <Button
                                         className="w-full"
                                         onClick={handleUpdateProfile}
-                                        disabled={updateProfile.isPending}
+                                        disabled={
+                                            updateProfile.isPending ||
+                                            isUploading ||
+                                            isUploadingAvatar
+                                        }
                                     >
                                         {updateProfile.isPending && (
                                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />

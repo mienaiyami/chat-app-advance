@@ -3,8 +3,8 @@ import {
     createContext,
     useContext,
     useState,
-    useEffect,
     useCallback,
+    useEffect,
 } from "react";
 import { toast } from "sonner";
 import { api } from "~/trpc/react";
@@ -19,7 +19,7 @@ export interface Conversation {
     updatedAt: Date | null;
     lastMessage?: string | null;
     lastMessageAt?: Date | null;
-    unreadCount?: number;
+    unreadCount: number;
     members: {
         userId: string;
         user: {
@@ -58,28 +58,34 @@ export const ConversationProvider = ({
     const [activeConversationId, setActiveConversationId] = useState<
         string | null
     >(null);
-    const [conversations, setConversations] = useState<Conversation[]>([]);
 
-    // Fetch all conversations for the current user
-    const { data, isLoading, error } = api.conversation.getAll.useQuery(
-        undefined,
-        {
-            enabled: !!session?.user.id,
-            refetchOnWindowFocus: false,
-        }
-    );
+    const {
+        data: conversations,
+        isLoading,
+        error,
+    } = api.conversation.getAll.useQuery(undefined, {
+        enabled: !!session?.user.id,
+        refetchOnWindowFocus: false,
+        refetchInterval: 30000,
+        select: (data) => {
+            return data.map((conversation) => {
+                const lastMessage = conversation.messages[0]?.text || null;
+                const lastMessageAt =
+                    conversation.messages[0]?.createdAt ||
+                    conversation.updatedAt;
 
-    // Get unread counts for all conversations
-    const { data: unreadCounts } = api.conversation.getAllUnreadCounts.useQuery(
-        undefined,
-        {
-            enabled: !!session?.user.id,
-            refetchInterval: 30000, // Refresh every 30 seconds
-        }
-    );
+                return {
+                    ...conversation,
+                    lastMessage,
+                    lastMessageAt,
+                };
+            });
+        },
+    });
 
     const setActiveConversation = useCallback(
         (id: string) => {
+            if (isLoading || !id || !conversations) return;
             const conversation = conversations.find((c) => c.id === id);
             if (conversation) {
                 setActiveConversationId(id);
@@ -87,35 +93,8 @@ export const ConversationProvider = ({
                 toast.error("Conversation not found");
             }
         },
-        [conversations]
+        [conversations, isLoading]
     );
-
-    // Update conversations when data changes
-    useEffect(() => {
-        if (data) {
-            // Map conversations and add additional properties
-            const enhancedConversations = data.map((conversation) => {
-                // Find unread count for this conversation
-                const unread = unreadCounts?.conversations.find(
-                    (c) => c.conversationId === conversation.id
-                );
-
-                // Get last message if available
-                const lastMessage = conversation.messages[0]?.text || null;
-
-                return {
-                    ...conversation,
-                    lastMessage,
-                    lastMessageAt:
-                        conversation.messages[0]?.createdAt ||
-                        conversation.updatedAt,
-                    unreadCount: unread?.unreadCount || 0,
-                };
-            });
-
-            setConversations(enhancedConversations);
-        }
-    }, [data, unreadCounts]);
 
     useEffect(() => {
         if (error) {
@@ -124,15 +103,15 @@ export const ConversationProvider = ({
         }
     }, [error]);
 
-    const value = {
-        conversations,
-        activeConversationId,
-        setActiveConversation,
-        isLoading,
-    };
-
     return (
-        <ConversationContext.Provider value={value}>
+        <ConversationContext.Provider
+            value={{
+                conversations: conversations || [],
+                activeConversationId,
+                setActiveConversation,
+                isLoading,
+            }}
+        >
             {children}
         </ConversationContext.Provider>
     );

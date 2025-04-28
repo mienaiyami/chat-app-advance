@@ -192,6 +192,11 @@ export default function Sidebar() {
                                                     </span>
                                                 </span>
                                             )} */}
+                                            {unreadCount > 0 && (
+                                                <span className="ml-auto bg-primary text-secondary rounded-full aspect-square w-4 text-xs">
+                                                    {unreadCount}
+                                                </span>
+                                            )}
                                         </div>
                                     </div>
                                 </Button>

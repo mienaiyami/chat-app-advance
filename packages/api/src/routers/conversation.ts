@@ -21,6 +21,7 @@ export const conversationRouter = createTRPCRouter({
     getAll: protectedProcedure.query(async ({ ctx }) => {
         const userId = ctx.session.user.id;
 
+        // Get all conversations with members and the last message
         const userConversations = await ctx.db.query.conversations.findMany({
             where: (conversations, { exists }) =>
                 exists(
@@ -54,7 +55,50 @@ export const conversationRouter = createTRPCRouter({
             ],
         });
 
-        return userConversations;
+        const membershipData = await ctx.db.query.conversationMembers.findMany({
+            where: eq(conversationMembers.userId, userId),
+            columns: {
+                conversationId: true,
+                lastReadAt: true,
+            },
+        });
+        const lastReadMap = new Map(
+            membershipData.map((m) => [m.conversationId, m.lastReadAt])
+        );
+
+        const unreadCountsPromises = userConversations.map(
+            async (conversation) => {
+                const lastReadAt =
+                    lastReadMap.get(conversation.id) || new Date(0);
+
+                const result = await ctx.db
+                    .select({ count: sql`count(*)`.mapWith(Number) })
+                    .from(messages)
+                    .where(
+                        and(
+                            eq(messages.conversationId, conversation.id),
+                            gt(messages.createdAt, lastReadAt),
+                            not(eq(messages.senderId, userId))
+                        )
+                    );
+
+                return {
+                    conversationId: conversation.id,
+                    count: result[0]?.count || 0,
+                };
+            }
+        );
+
+        const unreadCounts = await Promise.all(unreadCountsPromises);
+
+        const unreadCountMap = new Map(
+            unreadCounts.map((result) => [result.conversationId, result.count])
+        );
+
+        return userConversations.map((conversation) => ({
+            ...conversation,
+            unreadCount: unreadCountMap.get(conversation.id) || 0,
+        }));
     }),
 
     getById: protectedProcedure
@@ -849,14 +893,8 @@ export const conversationRouter = createTRPCRouter({
                 };
             })
         );
-
-        const directChats = unreadCounts.filter((c) => c.type === "direct");
-        const groups = unreadCounts.filter((c) => c.type === "group");
-
         return {
             conversations: unreadCounts,
-            directChats,
-            groups,
             totalUnread: unreadCounts.reduce(
                 (sum, item) => sum + item.unreadCount,
                 0

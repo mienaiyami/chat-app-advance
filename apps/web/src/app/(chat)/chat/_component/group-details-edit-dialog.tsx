@@ -11,7 +11,7 @@ import {
 } from "~/components/ui/dialog";
 import { Input } from "~/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "~/components/ui/avatar";
-import { Search } from "lucide-react";
+import { Search, Loader2 } from "lucide-react";
 import { Label } from "~/components/ui/label";
 import { ScrollArea, ScrollBar } from "~/components/ui/scroll-area";
 import { DialogDescription } from "@radix-ui/react-dialog";
@@ -19,6 +19,7 @@ import { api } from "~/trpc/react";
 import { toast } from "sonner";
 import { useSession } from "next-auth/react";
 import { useDebounce } from "~/hooks/use-debounce";
+import { useUploadThing } from "~/lib/uploadthing";
 
 type User = {
     id: string;
@@ -43,10 +44,28 @@ export function GroupDetailsEditDialog({
     const debouncedSearchQuery = useDebounce(searchQuery, 500);
     const [groupName, setGroupName] = useState("");
     const [displayPicture, setDisplayPicture] = useState<string | null>(null);
+    const [isUploading, setIsUploading] = useState(false);
     const { data: session } = useSession();
     const currentUserId = session?.user?.id;
 
     const utils = api.useUtils();
+
+    const { startUpload, isUploading: isUploadingAvatar } = useUploadThing(
+        "avatarUploader",
+        {
+            onClientUploadComplete: (res) => {
+                if (res && res[0]) {
+                    setDisplayPicture(res[0].ufsUrl);
+                    setIsUploading(false);
+                    toast.success("Group avatar uploaded successfully");
+                }
+            },
+            onUploadError: (error) => {
+                toast.error(`Error uploading avatar: ${error.message}`);
+                setIsUploading(false);
+            },
+        }
+    );
 
     const searchUsersQuery = api.user.search.useQuery(
         { query: debouncedSearchQuery },
@@ -60,6 +79,15 @@ export function GroupDetailsEditDialog({
         { conversationId },
         { enabled: !!conversationId && open }
     );
+    const addMemberMutation = api.conversation.addMembers.useMutation({
+        onSuccess: () => {
+            toast.success("Member added successfully");
+            utils.user.getMembers.invalidate({ conversationId });
+        },
+        onError: (error) => {
+            toast.error(error.message || "Failed to add member");
+        },
+    });
 
     const { data: contacts = [] } = api.user.getContacts.useQuery(undefined, {
         enabled: open,
@@ -100,12 +128,29 @@ export function GroupDetailsEditDialog({
         });
     };
 
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        if (file.size > 4 * 1024 * 1024) {
+            toast.error("File too large. Maximum size is 4MB");
+            return;
+        }
+
+        if (!file.type.startsWith("image/")) {
+            toast.error("Only image files are allowed");
+            return;
+        }
+
+        setIsUploading(true);
+        startUpload([file]);
+    };
+
     const handleEditGroup = () => {
         const updates: {
             id: string;
             name?: string;
             image?: string;
-            addMemberIds?: string[];
         } = {
             id: conversationId,
         };
@@ -113,7 +158,10 @@ export function GroupDetailsEditDialog({
         if (groupName) updates.name = groupName;
         if (displayPicture) updates.image = displayPicture;
         if (selectedUsers.length > 0) {
-            updates.addMemberIds = selectedUsers.map((user) => user.id);
+            addMemberMutation.mutate({
+                conversationId,
+                userIds: selectedUsers.map((user) => user.id),
+            });
         }
 
         editGroupMutation.mutate({
@@ -140,34 +188,21 @@ export function GroupDetailsEditDialog({
                             onChange={(e) => setGroupName(e.target.value)}
                         />
                     </Label>
-                    <Label
-                        className={`flex w-full items-start flex-col gap-2 ${
-                            displayPicture ? "" : "mb-2"
-                        }`}
-                    >
+                    <Label className="flex w-full items-start flex-col gap-2">
                         Avatar
                         <Input
                             type="file"
-                            className="col-span-3"
-                            onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) {
-                                    if (file.size > 5 * 1024 * 1024) {
-                                        toast.error(
-                                            "File too large. Maximum size is 5MB"
-                                        );
-                                        return;
-                                    }
-                                    const reader = new FileReader();
-                                    reader.onload = () => {
-                                        setDisplayPicture(
-                                            reader.result as string
-                                        );
-                                    };
-                                    reader.readAsDataURL(file);
-                                }
-                            }}
+                            className="w-full"
+                            accept="image/*"
+                            onChange={handleFileUpload}
+                            disabled={isUploading || isUploadingAvatar}
                         />
+                        {(isUploading || isUploadingAvatar) && (
+                            <div className="flex items-center mt-1">
+                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                <span className="text-sm">Uploading...</span>
+                            </div>
+                        )}
                     </Label>
                     {displayPicture && (
                         <div className="flex flex-row items-center px-4 gap-4">
@@ -175,9 +210,9 @@ export function GroupDetailsEditDialog({
                                 <Avatar className="w-16 h-16">
                                     <AvatarImage
                                         src={displayPicture}
-                                        alt="Profile picture"
+                                        alt="Group avatar"
                                     />
-                                    <AvatarFallback>UP</AvatarFallback>
+                                    <AvatarFallback>GP</AvatarFallback>
                                 </Avatar>
                             </div>
                             <Button
@@ -323,9 +358,17 @@ export function GroupDetailsEditDialog({
                     </DialogClose>
                     <Button
                         onClick={handleEditGroup}
-                        disabled={editGroupMutation.isPending}
+                        disabled={
+                            editGroupMutation.isPending ||
+                            isUploading ||
+                            isUploadingAvatar
+                        }
                     >
-                        {editGroupMutation.isPending ? "Saving..." : "Save"}
+                        {editGroupMutation.isPending ||
+                        isUploading ||
+                        isUploadingAvatar
+                            ? "Saving..."
+                            : "Save"}
                     </Button>
                 </div>
             </DialogContent>

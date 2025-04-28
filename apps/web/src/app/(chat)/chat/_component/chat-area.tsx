@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { Button } from "~/components/ui/button";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "~/components/ui/avatar";
-import { MoreHorizontal, Paperclip, Send, X } from "lucide-react";
+import { MoreHorizontal, Paperclip, Send, X, Loader2 } from "lucide-react";
 import { Textarea } from "~/components/ui/textarea";
 import { TooltipProvider } from "~/components/ui/tooltip";
 import { useMessage } from "~/providers/message-provider";
@@ -108,6 +108,7 @@ export function ChatArea() {
         deleteMessage,
         markAsRead,
         isSending,
+        isUploadingFile,
         handleTyping,
     } = useMessage();
 
@@ -218,17 +219,6 @@ export function ChatArea() {
         },
     });
 
-    // useEffect(() => {
-    //     if (msgInputRef.current && msgInputRef.current.scrollHeight < 100) {
-    //         msgInputRef.current.style.height = "auto";
-    //         msgInputRef.current.style.height = `${msgInputRef.current.scrollHeight}px`;
-    //         if (editingMessage) {
-    //             setEditingMessage(null);
-    //             msgInputRef.current.focus();
-    //         }
-    //     }
-    // }, [newMessage]);
-
     // Clear input and reset state when changing conversations
     useEffect(() => {
         setNewMessage("");
@@ -277,7 +267,7 @@ export function ChatArea() {
         if (activeConversationId && (newMessage.trim() || selectedFile)) {
             sendMessage({
                 conversationId: activeConversationId,
-                text: newMessage.trim() || selectedFile?.name || "",
+                text: newMessage.trim(),
                 repliedToId: selectedForReply?.id,
                 attachment: selectedFile || undefined,
             });
@@ -311,12 +301,21 @@ export function ChatArea() {
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (file) {
-            if (file.size > 100 * 1024 * 1024) {
-                toast.error("File too large to upload. Limit is 100MB");
-                return;
-            }
-            setSelectedFile(file);
+        if (!file) return;
+
+        if (file.size > 16 * 1024 * 1024) {
+            toast.error("File too large to upload. Limit is 16MB");
+            return;
+        }
+
+        setSelectedFile(file);
+
+        // For image files, create a preview
+        if (file.type.startsWith("image/")) {
+            const url = URL.createObjectURL(file);
+            setSelectedFilePreview(url);
+        } else {
+            setSelectedFilePreview(null);
         }
     };
 
@@ -800,11 +799,16 @@ export function ChatArea() {
                         onClick={handleSendMessage}
                         disabled={
                             isSending ||
-                            (!editingMessage && newMessage.trim() === "")
+                            isUploadingFile ||
+                            (!editingMessage &&
+                                newMessage.trim() === "" &&
+                                !selectedFile)
                         }
                     >
                         {editingMessage ? (
                             "Save"
+                        ) : isUploadingFile ? (
+                            <Loader2 className="h-5 w-5 animate-spin" />
                         ) : (
                             <>
                                 <Send className="h-5 w-5" />

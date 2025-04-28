@@ -173,12 +173,9 @@ export const userRouter = createTRPCRouter({
         return settings;
     }),
 
-    getOnlineContacts: protectedProcedure.query(async ({ ctx }) => {
-        // In a real app, this would come from a real-time service like Socket.io
-        // For now, we'll return a dummy list of "online" user IDs
+    getContacts: protectedProcedure.query(async ({ ctx }) => {
         const userId = ctx.session.user.id;
 
-        // Get all contacts of the current user
         const contacts = await ctx.db.query.userContacts.findMany({
             where: eq(userContacts.userId, userId),
             columns: {
@@ -186,16 +183,7 @@ export const userRouter = createTRPCRouter({
             },
         });
 
-        // Simulate some users being online (for demo purposes)
-        // In a real app, you'd get this from your real-time/socket service
-        const contactIds = contacts.map((contact) => contact.contactId);
-
-        // Pretend every other contact is online
-        const onlineContactIds = contactIds.filter(
-            (_, index) => index % 2 === 0
-        );
-
-        return onlineContactIds;
+        return contacts;
     }),
 
     getMembers: protectedProcedure

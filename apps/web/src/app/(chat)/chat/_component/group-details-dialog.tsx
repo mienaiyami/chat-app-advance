@@ -1,315 +1,254 @@
 "use client";
 
-import { Check, Copy, Edit2, Trash, UserPlus, X } from "lucide-react";
-import { useEffect, useState } from "react";
-import { toast } from "sonner";
-import { Button } from "~/components/ui/button";
+import { useState } from "react";
 import {
+    Dialog,
     DialogContent,
     DialogHeader,
     DialogTitle,
 } from "~/components/ui/dialog";
-import { Input } from "~/components/ui/input";
-import { Label } from "~/components/ui/label";
-import { ScrollArea } from "~/components/ui/scroll-area";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
-import { api } from "~/trpc/react";
+import { Button } from "~/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "~/components/ui/avatar";
-import { Skeleton } from "~/components/ui/skeleton";
+import { Input } from "~/components/ui/input";
+import { ScrollArea } from "~/components/ui/scroll-area";
+import { Badge } from "~/components/ui/badge";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "~/components/ui/dropdown-menu";
+import {
+    CalendarDays,
+    Edit,
+    MoreVertical,
+    Search,
+    User,
+    UserPlus,
+} from "lucide-react";
+import { Separator } from "~/components/ui/separator";
+import { formatDate } from "~/lib/utils";
+import { api } from "~/trpc/react";
+import { toast } from "sonner";
 import { useSession } from "next-auth/react";
+import { GroupDetailsEditDialog } from "./group-details-edit-dialog";
+import { useDialog } from "~/hooks/use-dialog";
 
-interface GroupDetailsDialogProps {
+type GroupDetailsDialogProps = {
     conversationId: string;
     onClose: () => void;
-}
+};
 
-export default function GroupDetailsDialog({
+export function GroupDetailsDialog({
     conversationId,
     onClose,
 }: GroupDetailsDialogProps) {
+    const [searchQuery, setSearchQuery] = useState("");
     const { data: session } = useSession();
-    const [copied, setCopied] = useState(false);
-    const [editMode, setEditMode] = useState(false);
-    const [groupName, setGroupName] = useState("");
-    const [inviteEmail, setInviteEmail] = useState("");
-
-    const { data: group, isLoading: isLoadingGroup } =
-        api.conversation.getById.useQuery(
-            { conversationId },
-            { enabled: !!conversationId }
-        );
-
-    const { data: members, isLoading: isLoadingMembers } =
-        api.conversation.getMembers.useQuery(
-            { conversationId },
-            { enabled: !!conversationId }
-        );
-
+    const currentUserId = session?.user?.id;
+    const groupDetailsEditDialog = useDialog<HTMLButtonElement>();
     const utils = api.useUtils();
-    const updateGroup = api.conversation.update.useMutation({
-        onSuccess: () => {
-            toast.success("Group updated successfully");
-            setEditMode(false);
-            utils.conversation.getById.invalidate({
-                conversationId,
-            });
-        },
-        onError: (error) => {
-            toast.error(error.message);
-        },
-    });
 
-    const inviteUser = api.conversation.addMembers.useMutation({
-        onSuccess: () => {
-            toast.success("Invitation sent successfully");
-            setInviteEmail("");
-            utils.conversation.getMembers.invalidate({
-                conversationId,
-            });
-        },
-        onError: (error) => {
-            toast.error(error.message);
-        },
-    });
-
-    const removeMember = api.conversation.removeMember.useMutation({
-        onSuccess: () => {
-            toast.success("Member removed successfully");
-            utils.conversation.getMembers.invalidate({
-                conversationId,
-            });
-        },
-        onError: (error) => {
-            toast.error(error.message);
-        },
-    });
-
-    useEffect(() => {
-        if (group) {
-            setGroupName(group.name ?? "");
-        }
-    }, [group]);
-
-    const handleUpdateGroup = () => {
-        if (!groupName.trim()) {
-            toast.error("Group name cannot be empty");
-            return;
-        }
-
-        updateGroup.mutate({
-            conversationId,
-            name: groupName.trim(),
-        });
-    };
-
-    const handleInviteUser = () => {
-        if (!inviteEmail.trim()) {
-            toast.error("Email cannot be empty");
-            return;
-        }
-
-        inviteUser.mutate({
-            conversationId,
-            userIds: [inviteEmail.trim()],
-        });
-    };
-
-    const handleRemoveMember = (memberId: string) => {
-        removeMember.mutate({
-            conversationId,
-            userId: memberId,
-        });
-    };
-
-    const isCurrentUserAdmin = members?.some(
-        (member) =>
-            member.role === "admin" && member.userId === session?.user.id
+    // Get conversation details
+    const { data: conversationDetails } = api.conversation.getById.useQuery(
+        { conversationId },
+        { enabled: !!conversationId }
     );
 
+    // Get members
+    const { data: members = [] } = api.user.getMembers.useQuery(
+        { conversationId },
+        { enabled: !!conversationId }
+    );
+
+    // tRPC mutations
+    const updateRoleMutation = api.conversation.updateRole.useMutation({
+        onSuccess: () => {
+            toast.success("Admin status updated successfully");
+            utils.user.getMembers.invalidate({ conversationId });
+        },
+        onError: (error) => {
+            toast.error(error.message || "Failed to update admin status");
+        },
+    });
+
+    const removeMemberMutation = api.conversation.removeMember.useMutation({
+        onSuccess: () => {
+            toast.success("Member removed successfully");
+            utils.user.getMembers.invalidate({ conversationId });
+        },
+        onError: (error) => {
+            toast.error(error.message || "Failed to remove member");
+        },
+    });
+
+    if (!conversationDetails || conversationDetails.type !== "group")
+        return null;
+
+    const sortedMembers = [...members].sort((a, b) => {
+        if (a.role === "admin" && b.role !== "admin") return -1;
+        if (a.role !== "admin" && b.role === "admin") return 1;
+        return 0;
+    });
+
+    const filteredMembers = sortedMembers.filter((member) =>
+        (member.name || "").toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    const isAdmin =
+        members.find((m) => m.id === currentUserId)?.role === "admin";
+
     return (
-        <DialogContent
-            className="sm:max-w-[500px]"
-            onInteractOutside={(e) => e.preventDefault()}
-            onEscapeKeyDown={onClose}
-        >
-            <DialogHeader>
+        <DialogContent className="sm:max-w-[425px] cursor-default">
+            <DialogHeader className="select-none">
                 <DialogTitle>Group Details</DialogTitle>
             </DialogHeader>
-
-            <Tabs defaultValue="details" className="w-full">
-                <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="details">Details</TabsTrigger>
-                    <TabsTrigger value="members">Members</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="details" className="space-y-4 mt-4">
-                    {isLoadingGroup ? (
-                        <div className="space-y-2">
-                            <Skeleton className="h-5 w-32" />
-                            <Skeleton className="h-10 w-full" />
-                            <Skeleton className="h-5 w-32 mt-4" />
-                            <Skeleton className="h-10 w-full" />
-                        </div>
-                    ) : (
-                        <>
-                            <div className="space-y-2">
-                                <div className="flex items-center justify-between">
-                                    <Label htmlFor="groupName">
-                                        Group Name
-                                    </Label>
-                                    <Button
-                                        size="icon"
-                                        variant="ghost"
-                                        onClick={() => setEditMode(!editMode)}
-                                    >
-                                        {editMode ? (
-                                            <X className="h-4 w-4" />
-                                        ) : (
-                                            <Edit2 className="h-4 w-4" />
-                                        )}
-                                        <span className="sr-only">
-                                            {editMode ? "Cancel" : "Edit"}
-                                        </span>
-                                    </Button>
-                                </div>
-                                {editMode ? (
-                                    <div className="flex items-center space-x-2">
-                                        <Input
-                                            id="groupName"
-                                            value={groupName}
-                                            onChange={(e) =>
-                                                setGroupName(e.target.value)
-                                            }
-                                            placeholder="Enter group name"
+            <div className="grid gap-2 py-4">
+                <div className="flex items-center gap-4">
+                    <Avatar className="w-20 h-20">
+                        <AvatarImage
+                            src={conversationDetails.image || undefined}
+                            alt={conversationDetails.name || "Group"}
+                        />
+                        <AvatarFallback>
+                            {(conversationDetails.name || "Group")
+                                .slice(0, 2)
+                                .toUpperCase()}
+                        </AvatarFallback>
+                    </Avatar>
+                    <div>
+                        <h2 className="text-2xl font-bold">
+                            {conversationDetails.name}
+                        </h2>
+                        <p className="text-sm text-muted-foreground">
+                            {members.length} members
+                        </p>
+                    </div>
+                </div>
+                <p className="text-sm text-muted-foreground flex items-center">
+                    <CalendarDays className="w-4 h-4 mr-1" />
+                    Created on:{" "}
+                    {formatDate(new Date(conversationDetails.createdAt))}
+                </p>
+                <div className="select-none">
+                    <h3 className="mb-2 text-lg font-semibold relative">
+                        Members
+                    </h3>
+                    <div className="flex items-center mb-2 relative">
+                        <Input
+                            placeholder="Search members..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="h-8 pl-8"
+                        />
+                        <Search className="h-4 w-4 text-muted-foreground absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    </div>
+                    <ScrollArea className="h-[200px]">
+                        {filteredMembers.map((member) => (
+                            <div
+                                key={member.id}
+                                className="flex items-center justify-between h-12 p-2 hover:bg-accent/50 rounded-md"
+                            >
+                                <div className="flex items-center">
+                                    <Avatar className="w-8 h-8 mr-2">
+                                        <AvatarImage
+                                            src={member.image || undefined}
+                                            alt={member.name || ""}
                                         />
-                                        <Button
-                                            size="sm"
-                                            onClick={handleUpdateGroup}
-                                            disabled={updateGroup.isPending}
-                                        >
-                                            {updateGroup.isPending
-                                                ? "Saving..."
-                                                : "Save"}
-                                        </Button>
-                                    </div>
-                                ) : (
-                                    <Input
-                                        id="groupName"
-                                        value={groupName}
-                                        disabled
-                                    />
-                                )}
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label>Invite by Email</Label>
-                                <div className="flex items-center space-x-2">
-                                    <Input
-                                        type="email"
-                                        placeholder="user@example.com"
-                                        value={inviteEmail}
-                                        onChange={(e) =>
-                                            setInviteEmail(e.target.value)
-                                        }
-                                    />
-                                    <Button
-                                        size="icon"
-                                        onClick={handleInviteUser}
-                                        disabled={
-                                            inviteUser.isPending ||
-                                            !inviteEmail.trim()
-                                        }
-                                    >
-                                        <UserPlus className="h-4 w-4" />
-                                        <span className="sr-only">Invite</span>
-                                    </Button>
-                                </div>
-                            </div>
-                        </>
-                    )}
-                </TabsContent>
-
-                <TabsContent value="members" className="mt-4">
-                    {isLoadingMembers ? (
-                        <div className="space-y-3">
-                            {Array.from({ length: 3 }).map((_, i) => (
-                                <div
-                                    key={String(i)}
-                                    className="flex items-center space-x-2"
-                                >
-                                    <Skeleton className="h-10 w-10 rounded-full" />
-                                    <div className="space-y-1 flex-1">
-                                        <Skeleton className="h-4 w-24" />
-                                        <Skeleton className="h-3 w-16" />
+                                        <AvatarFallback>
+                                            {(member.name || "")
+                                                .slice(0, 2)
+                                                .toUpperCase()}
+                                        </AvatarFallback>
+                                    </Avatar>
+                                    <div className="select-text">
+                                        <p className="text-sm font-medium">
+                                            {member.name || ""}
+                                            {member.id === currentUserId &&
+                                                " (You)"}
+                                        </p>
                                     </div>
                                 </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <ScrollArea className="h-[300px] pr-4">
-                            <div className="space-y-3">
-                                {members?.map((member) => (
-                                    <div
-                                        key={member.userId}
-                                        className="flex items-center justify-between py-2 px-2 rounded-md hover:bg-accent/50"
-                                    >
-                                        <div className="flex items-center space-x-3">
-                                            <Avatar>
-                                                <AvatarImage
-                                                    src={member.image || ""}
-                                                />
-                                                <AvatarFallback>
-                                                    {member.name
-                                                        ?.slice(0, 2)
-                                                        .toUpperCase() || "?"}
-                                                </AvatarFallback>
-                                            </Avatar>
-                                            <div>
-                                                <p className="text-sm font-medium">
-                                                    {member.name}
-                                                </p>
-                                                <p className="text-xs text-muted-foreground">
-                                                    {member.role === "admin"
-                                                        ? "Admin"
-                                                        : "Member"}
-                                                </p>
-                                            </div>
-                                        </div>
-
-                                        {member.role !== "admin" &&
-                                            isCurrentUserAdmin && (
+                                <div className="flex items-center select-none">
+                                    {member.role === "admin" && (
+                                        <Badge variant="secondary">Admin</Badge>
+                                    )}
+                                    {isAdmin && member.id !== currentUserId && (
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
                                                 <Button
                                                     variant="ghost"
                                                     size="icon"
-                                                    className="h-8 w-8 text-destructive"
+                                                >
+                                                    <MoreVertical className="h-4 w-4" />
+                                                </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end">
+                                                <DropdownMenuItem
                                                     onClick={() =>
-                                                        handleRemoveMember(
-                                                            member.userId
+                                                        updateRoleMutation.mutate(
+                                                            {
+                                                                conversationId,
+                                                                userId: member.id,
+                                                                role:
+                                                                    member.role ===
+                                                                    "admin"
+                                                                        ? "member"
+                                                                        : "admin",
+                                                            }
                                                         )
                                                     }
-                                                    disabled={
-                                                        removeMember.isPending
+                                                >
+                                                    {member.role === "admin"
+                                                        ? "Remove Admin"
+                                                        : "Make Admin"}
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem
+                                                    onClick={() =>
+                                                        removeMemberMutation.mutate(
+                                                            {
+                                                                conversationId,
+                                                                userId: member.id,
+                                                            }
+                                                        )
                                                     }
                                                 >
-                                                    <Trash className="h-4 w-4" />
-                                                    <span className="sr-only">
-                                                        Remove
-                                                    </span>
-                                                </Button>
-                                            )}
-                                    </div>
-                                ))}
-
-                                {members && members.length === 0 && (
-                                    <p className="text-center text-muted-foreground py-8">
-                                        No members found
-                                    </p>
-                                )}
+                                                    Remove from Group
+                                                </DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                    )}
+                                </div>
                             </div>
-                        </ScrollArea>
-                    )}
-                </TabsContent>
-            </Tabs>
+                        ))}
+                    </ScrollArea>
+                </div>
+                {isAdmin && (
+                    <div className="flex justify-between">
+                        <Button
+                            className="flex items-center w-full"
+                            {...groupDetailsEditDialog.triggerProps}
+                        >
+                            <Edit className="w-4 h-4 mr-2" />
+                            Edit Details
+                            <Separator
+                                orientation="vertical"
+                                className="mx-6 bg-primary-foreground"
+                            />
+                            <UserPlus className="w-4 h-4 mr-2" />
+                            Add Members
+                        </Button>
+                        <GroupDetailsEditDialog
+                            conversationId={conversationId}
+                            open={groupDetailsEditDialog.isOpen}
+                            onOpenChange={groupDetailsEditDialog.setIsOpen}
+                        />
+                    </div>
+                )}
+                <Button variant="destructive" onClick={onClose}>
+                    Leave Group
+                </Button>
+            </div>
         </DialogContent>
     );
 }

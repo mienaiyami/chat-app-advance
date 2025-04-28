@@ -29,7 +29,7 @@ export default function Sidebar() {
         enabled: !!session?.user.id,
     });
 
-    const onlineContacts = api.user.getOnlineContacts.useQuery(undefined, {
+    const onlineContacts = api.user.getContacts.useQuery(undefined, {
         enabled: !!session?.user.id,
     });
 

@@ -35,7 +35,7 @@ import {
 import MessageItem from "./message-item";
 import { api } from "~/trpc/react";
 import type { RouterOutputs } from "~/trpc/react";
-import GroupDetailsDialog from "./group-details-dialog";
+import { GroupDetailsDialog } from "./group-details-dialog";
 
 type Message = RouterOutputs["message"]["getMessages"]["messages"][number];
 
@@ -123,7 +123,8 @@ export function ChatArea() {
     );
     const membersMap = new Map(membersQuery.data?.map((m) => [m.id, m]) || []);
 
-    const onlineContactsQuery = api.user.getOnlineContacts.useQuery();
+    // todo: get from socket
+    const onlineContactsQuery = api.user.getContacts.useQuery();
     const onlineContacts = onlineContactsQuery.data || [];
 
     const typingUsersQuery = api.user.getTypingUsers.useQuery(
@@ -398,11 +399,8 @@ export function ChatArea() {
                                 )} is typing...`}
                             {typingUsers.length === 0 &&
                                 (chatOpened.type === "direct"
-                                    ? onlineContacts.includes(
-                                          chatOpened.members.find(
-                                              (m) =>
-                                                  m.userId !== currentUser?.id
-                                          )?.userId || ""
+                                    ? onlineContacts.some(
+                                          (c) => c.contactId === currentUser?.id
                                       )
                                         ? "Online"
                                         : chatOpened.name?.includes(

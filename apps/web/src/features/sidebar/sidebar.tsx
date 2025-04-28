@@ -13,16 +13,20 @@ import { formatDate } from "~/lib/utils";
 import { useSession } from "next-auth/react";
 import { toast } from "sonner";
 import { cn } from "~/lib/utils";
-import ProfileDialog from "./profile-dialog";
-import AddContactDialog from "./add-contact-dialog";
-import CreateGroupDialog from "./create-group-dialog";
+import ProfileDialog from "./components/profile-dialog";
+import AddContactDialog from "./components/add-contact-dialog";
+import CreateGroupDialog from "./components/create-group-dialog";
 import { useRouter } from "next/navigation";
 export default function Sidebar() {
     const [searchQuery, setSearchQuery] = useState("");
     const { data: session } = useSession();
 
-    const { conversations, activeConversationId, isLoading } =
-        useConversation();
+    const {
+        conversations,
+        activeConversationId,
+        isLoading,
+        setActiveConversation,
+    } = useConversation();
     const router = useRouter();
 
     const userSettings = api.user.getSettings.useQuery(undefined, {
@@ -54,6 +58,7 @@ export default function Sidebar() {
     );
 
     const handleSelectConversation = (conversationId: string) => {
+        setActiveConversation("");
         router.push(`/chat/${conversationId}`);
     };
 

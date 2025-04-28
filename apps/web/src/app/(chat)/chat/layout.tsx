@@ -1,4 +1,4 @@
-import Sidebar from "./_component/sidebar";
+import Sidebar from "../../../features/sidebar/sidebar";
 
 export default function ChatLayout({
     children,

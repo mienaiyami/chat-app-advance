@@ -114,8 +114,8 @@ export const messageRouter = createTRPCRouter({
             z.object({
                 conversationId: z.string(),
                 text: z.string().min(1),
-                repliedToId: z.string().optional(),
-                attachment: attachmentSchema.optional(),
+                repliedToId: z.string().nullish(),
+                attachment: attachmentSchema.nullish(),
             })
         )
         .mutation(async ({ ctx, input }) => {
@@ -299,12 +299,29 @@ export const messageRouter = createTRPCRouter({
                 });
             }
 
-            const updatedMessage = await ctx.db
+            await ctx.db
                 .update(messages)
                 .set({ text: input.text })
-                .where(eq(messages.id, input.messageId))
-                .returning();
+                .where(eq(messages.id, input.messageId));
 
-            return { success: true };
+            const updatedMessage = await ctx.db.query.messages.findFirst({
+                where: eq(messages.id, input.messageId),
+                with: {
+                    sender: SENDER_SELECT,
+                    repliedTo: {
+                        with: {
+                            sender: SENDER_SELECT,
+                        },
+                    },
+                },
+            });
+
+            if (!updatedMessage) {
+                throw new TRPCError({
+                    code: "INTERNAL_SERVER_ERROR",
+                    message: "Failed to update message",
+                });
+            }
+            return updatedMessage;
         }),
 });

@@ -233,18 +233,6 @@ export const userRouter = createTRPCRouter({
             return members;
         }),
 
-    getTypingUsers: protectedProcedure
-        .input(
-            z.object({
-                conversationId: z.string(),
-            })
-        )
-        .query(async ({ ctx, input }) => {
-            // In a real app, this would use a real-time service like Socket.io
-            // For now, return an empty array (no one is typing)
-            return [];
-        }),
-
     updateContact: protectedProcedure
         .input(
             z.object({

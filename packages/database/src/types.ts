@@ -1,6 +1,7 @@
 import type {
     conversationMembers,
     conversations,
+    messages,
     users,
     userSettings,
 } from "./schema";
@@ -16,3 +17,23 @@ export type ConversationInsert = typeof conversations.$inferInsert;
 
 export type ConversationMember = typeof conversationMembers.$inferSelect;
 export type ConversationMemberInsert = typeof conversationMembers.$inferInsert;
+
+export type Message = typeof messages.$inferSelect;
+export type MessageInsert = typeof messages.$inferInsert;
+
+export type MessageWithRelations = Message & {
+    sender: {
+        id: string;
+        name: string | null;
+        image: string | null;
+    };
+    repliedTo:
+        | (Message & {
+              sender: {
+                  id: string;
+                  name: string | null;
+                  image: string | null;
+              };
+          })
+        | null;
+};

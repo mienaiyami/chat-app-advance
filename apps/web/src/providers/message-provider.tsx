@@ -6,23 +6,20 @@ import {
     useState,
     useEffect,
     useCallback,
+    useRef,
 } from "react";
 import { toast } from "sonner";
 import { api, type RouterOutputs } from "~/trpc/react";
 import { useConversation } from "./conversation-provider";
-import type { Attachment } from "@repo/database";
 import { useUploadThing } from "~/lib/uploadthing";
-import type { ClientUploadedFileData } from "uploadthing/types";
+import { useSocket } from "./socket-provider";
+import { useSession } from "next-auth/react";
+import type { MessageWithRelations } from "@repo/database";
+import type { ClientToServerEvents } from "@app/socket/types";
 
-type Message = RouterOutputs["message"]["getMessages"]["messages"][number];
+type Message = MessageWithRelations;
 
-interface SendMessageParams {
-    conversationId: string;
-    text: string;
-    repliedToId?: string;
-    attachment?: File;
-    attachmentUrl?: string;
-}
+type SendMessageParams = Parameters<ClientToServerEvents["message:send"]>[0];
 
 interface MessageContextType {
     messages: Message[];
@@ -68,9 +65,10 @@ export const MessageProvider = ({
     const { activeConversationId } = useConversation();
     const [messages, setMessages] = useState<Message[]>([]);
     const [isSending, setIsSending] = useState(false);
-    const [typingTimeout, setTypingTimeout] = useState<NodeJS.Timeout | null>(
-        null
-    );
+    const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const { data: session } = useSession();
+
+    const { socket, isConnected, emitTyping, emitStopTyping } = useSocket();
 
     const {
         data: messagesData,
@@ -106,9 +104,64 @@ export const MessageProvider = ({
         }
     }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
 
+    useEffect(() => {
+        if (!socket || !isConnected) return;
+
+        const handleNewMessage = (newMessage: Message) => {
+            console.log("newMessage", newMessage);
+            if (newMessage.conversationId === activeConversationId) {
+                setMessages((prev) => [newMessage, ...prev]);
+            }
+        };
+
+        const handleUpdateMessage = (updatedMessage: Message) => {
+            if (updatedMessage.conversationId === activeConversationId) {
+                setMessages((prev) =>
+                    prev.map((msg) =>
+                        msg.id === updatedMessage.id ? updatedMessage : msg
+                    )
+                );
+            }
+        };
+
+        const handleDeleteMessage = ({
+            messageId,
+            conversationId,
+        }: {
+            messageId: string;
+            conversationId: string;
+        }) => {
+            if (conversationId === activeConversationId) {
+                setMessages((prev) =>
+                    prev.filter((msg) => msg.id !== messageId)
+                );
+            }
+        };
+
+        socket.on("message:new", handleNewMessage);
+        socket.on("message:update", handleUpdateMessage);
+        socket.on("message:delete", handleDeleteMessage);
+
+        return () => {
+            socket.off("message:new", handleNewMessage);
+            socket.off("message:update", handleUpdateMessage);
+            socket.off("message:delete", handleDeleteMessage);
+        };
+    }, [socket, isConnected, activeConversationId]);
+
+    useEffect(() => {
+        if (activeConversationId && socket && isConnected) {
+            markAsRead();
+        }
+    }, [activeConversationId, socket, isConnected]);
+
     const sendMessageMutation = api.message.sendMessage.useMutation({
         onSuccess: () => {
-            refetch();
+            // Don't need to refetch as socket will provide the new message
+            // Only refetch if socket is not connected
+            if (!isConnected) {
+                refetch();
+            }
         },
         onError: (error) => {
             toast.error(error.message || "Failed to send message");
@@ -117,7 +170,9 @@ export const MessageProvider = ({
 
     const editMessageMutation = api.message.editMessage.useMutation({
         onSuccess: () => {
-            refetch();
+            if (!isConnected) {
+                refetch();
+            }
         },
         onError: (error) => {
             toast.error(error.message || "Failed to edit message");
@@ -126,7 +181,9 @@ export const MessageProvider = ({
 
     const deleteMessageMutation = api.message.deleteMessage.useMutation({
         onSuccess: () => {
-            refetch();
+            if (!isConnected) {
+                refetch();
+            }
         },
         onError: (error) => {
             toast.error(error.message || "Failed to delete message");
@@ -143,7 +200,7 @@ export const MessageProvider = ({
         "chatFileUploader",
         {
             onClientUploadComplete: (res) => {
-                if (res && res[0] && activeConversationId) {
+                if (res?.[0] && activeConversationId) {
                     const uploadedFile = res[0];
                     const fileType =
                         uploadedFile.name.split(".").pop()?.toLowerCase() || "";
@@ -156,19 +213,6 @@ export const MessageProvider = ({
                     } else if (uploadedFile.type?.startsWith("audio/")) {
                         fType = "audio";
                     }
-
-                    sendMessageMutation.mutateAsync({
-                        conversationId: activeConversationId,
-                        text: uploadedFile.name,
-                        attachment: {
-                            url: uploadedFile.ufsUrl,
-                            name: uploadedFile.name,
-                            size: uploadedFile.size,
-                            fType,
-                            mimeType:
-                                uploadedFile.type || "application/octet-stream",
-                        },
-                    });
                 }
             },
             onUploadError: (error) => {
@@ -183,48 +227,32 @@ export const MessageProvider = ({
             text,
             repliedToId,
             attachment,
-            attachmentUrl,
         }: SendMessageParams) => {
-            if (!text.trim() && !attachment && !attachmentUrl) return;
+            if (!text.trim() && !attachment) return;
 
             setIsSending(true);
             try {
-                if (attachment) {
-                    await startUpload([attachment]);
+                // When user uploads a file via the UI
+                if (attachment && "lastModified" in attachment) {
+                    // It's a File object from browser
+                    await startUpload([attachment as unknown as File]);
                     return;
                 }
-
-                if (attachmentUrl) {
-                    const fileExtension =
-                        attachmentUrl.split(".").pop()?.toLowerCase() || "";
-                    const mimeType = getMimeTypeFromExtension(fileExtension);
-
-                    let fType: "image" | "video" | "audio" | "file" = "file";
-                    if (mimeType.startsWith("image/")) {
-                        fType = "image";
-                    } else if (mimeType.startsWith("video/")) {
-                        fType = "video";
-                    } else if (mimeType.startsWith("audio/")) {
-                        fType = "audio";
-                    }
-
-                    await sendMessageMutation.mutateAsync({
+                // Use socket if connected, otherwise use TRPC
+                if (socket && isConnected && session?.user.id) {
+                    socket.emit("message:send", {
                         conversationId,
                         text: text.trim(),
+                        senderId: session.user.id,
                         repliedToId,
-                        attachment: {
-                            url: attachmentUrl,
-                            name: text.trim() || "File",
-                            size: 0,
-                            fType,
-                            mimeType,
-                        },
+                        attachment,
                     });
                 } else {
                     await sendMessageMutation.mutateAsync({
                         conversationId,
                         text: text.trim(),
                         repliedToId,
+                        attachment,
                     });
                 }
             } catch (error) {
@@ -233,7 +261,13 @@ export const MessageProvider = ({
                 setIsSending(false);
             }
         },
-        [sendMessageMutation, startUpload]
+        [
+            sendMessageMutation,
+            startUpload,
+            socket,
+            isConnected,
+            session?.user.id,
+        ]
     );
 
     const editMessage = useCallback(
@@ -241,68 +275,87 @@ export const MessageProvider = ({
             if (!text.trim()) return;
 
             try {
-                await editMessageMutation.mutateAsync({
-                    messageId,
-                    text: text.trim(),
-                });
+                // Use socket if connected, otherwise use TRPC
+                if (socket && isConnected) {
+                    socket.emit("message:edit", {
+                        messageId,
+                        text: text.trim(),
+                    });
+                } else {
+                    await editMessageMutation.mutateAsync({
+                        messageId,
+                        text: text.trim(),
+                    });
+                }
             } catch (error) {
                 console.error(error);
             }
         },
-        [editMessageMutation]
+        [editMessageMutation, socket, isConnected]
     );
 
     const deleteMessage = useCallback(
         async (messageId: string) => {
             try {
-                await deleteMessageMutation.mutateAsync({
-                    messageId,
-                });
+                if (socket && isConnected && activeConversationId) {
+                    socket.emit("message:delete", {
+                        messageId,
+                        conversationId: activeConversationId,
+                    });
+                } else {
+                    await deleteMessageMutation.mutateAsync({
+                        messageId,
+                    });
+                }
             } catch (error) {
                 console.error(error);
             }
         },
-        [deleteMessageMutation]
+        [deleteMessageMutation, socket, isConnected, activeConversationId]
     );
 
     const markAsRead = useCallback(async () => {
         if (!activeConversationId) return Promise.resolve();
 
         try {
-            await markAsReadMutation.mutateAsync({
-                conversationId: activeConversationId,
-            });
+            // Use socket if connected, otherwise use TRPC
+            if (socket && isConnected) {
+                socket.emit("conversation:read", {
+                    conversationId: activeConversationId,
+                });
+            } else {
+                await markAsReadMutation.mutateAsync({
+                    conversationId: activeConversationId,
+                });
+            }
             return Promise.resolve();
         } catch (error) {
             console.error(error);
             return Promise.reject(error);
         }
-    }, [activeConversationId, markAsReadMutation]);
+    }, [activeConversationId, markAsReadMutation, socket, isConnected]);
 
     const handleTyping = useCallback(() => {
-        // In a real app, you would emit a socket event to notify other users
-        // that the current user is typing
+        if (!activeConversationId || !socket || !isConnected) return;
 
-        if (typingTimeout) {
-            clearTimeout(typingTimeout);
+        emitTyping(activeConversationId);
+
+        if (typingTimeoutRef.current) {
+            clearTimeout(typingTimeoutRef.current);
         }
 
-        // Set a timeout to clear the typing indicator after 2 seconds of inactivity
-        const timeout = setTimeout(() => {
-            // In a real app, emit a socket event to clear typing indicator
+        typingTimeoutRef.current = setTimeout(() => {
+            emitStopTyping(activeConversationId);
         }, 2000);
+    }, [activeConversationId, socket, isConnected, emitTyping, emitStopTyping]);
 
-        setTypingTimeout(timeout);
-    }, [typingTimeout]);
-
-    // Clean up typing timeout on unmount
     useEffect(() => {
         return () => {
-            if (typingTimeout) {
-                clearTimeout(typingTimeout);
+            if (typingTimeoutRef.current) {
+                clearTimeout(typingTimeoutRef.current);
             }
         };
-    }, [typingTimeout]);
+    }, []);
 
     return (
         <MessageContext.Provider

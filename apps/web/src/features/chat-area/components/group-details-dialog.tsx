@@ -31,8 +31,8 @@ import { formatDate } from "~/lib/utils";
 import { api } from "~/trpc/react";
 import { toast } from "sonner";
 import { useSession } from "next-auth/react";
-import { GroupDetailsEditDialog } from "./group-details-edit-dialog";
 import { useDialog } from "~/hooks/use-dialog";
+import { GroupDetailsEditDialog } from "./group-details-edit-dialog";
 
 type GroupDetailsDialogProps = {
     conversationId: string;

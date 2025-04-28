@@ -2,7 +2,7 @@
 
 import React, { useEffect } from "react";
 import { useParams } from "next/navigation";
-import { ChatArea } from "~/app/(chat)/chat/_component/chat-area";
+import { ChatArea } from "~/features/chat-area/chat-area";
 import { useConversation } from "~/providers/conversation-provider";
 
 export default function DirectChatPage() {

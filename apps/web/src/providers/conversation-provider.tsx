@@ -9,6 +9,10 @@ import {
 import { toast } from "sonner";
 import { api } from "~/trpc/react";
 import { useSession } from "next-auth/react";
+import { useSocket } from "./socket-provider";
+import type { MessageWithRelations } from "@repo/database";
+
+type Message = MessageWithRelations;
 
 export interface Conversation {
     id: string;
@@ -58,11 +62,13 @@ export const ConversationProvider = ({
     const [activeConversationId, setActiveConversationId] = useState<
         string | null
     >(null);
+    const { socket, isConnected } = useSocket();
 
     const {
         data: conversations,
         isLoading,
         error,
+        refetch,
     } = api.conversation.getAll.useQuery(undefined, {
         enabled: !!session?.user.id,
         refetchOnWindowFocus: false,
@@ -82,6 +88,43 @@ export const ConversationProvider = ({
             });
         },
     });
+
+    useEffect(() => {
+        if (!socket || !isConnected) return;
+
+        const handleConversationUpdate = (data: {
+            id: string;
+            lastMessage?: Message | null;
+            updatedAt: Date;
+        }) => {
+            console.log({
+                data,
+            });
+            refetch();
+        };
+
+        const handleConversationRead = ({
+            conversationId,
+            userId,
+            timestamp,
+        }: {
+            conversationId: string;
+            userId: string;
+            timestamp: string;
+        }) => {
+            if (session?.user.id !== userId) {
+                refetch();
+            }
+        };
+
+        socket.on("conversation:update", handleConversationUpdate);
+        socket.on("conversation:read", handleConversationRead);
+
+        return () => {
+            socket.off("conversation:update", handleConversationUpdate);
+            socket.off("conversation:read", handleConversationRead);
+        };
+    }, [socket, isConnected, refetch, session?.user.id]);
 
     const setActiveConversation = useCallback(
         (id: string) => {

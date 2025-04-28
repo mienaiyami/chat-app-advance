@@ -1,41 +1,52 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import { toast } from "sonner";
 import { useSession } from "next-auth/react";
+import type {
+    ClientToServerEvents,
+    ServerToClientEvents,
+} from "@app/socket/types";
 
 type SocketContextType = {
-    socket: Socket | null;
+    socket: Socket<ServerToClientEvents, ClientToServerEvents> | null;
     isConnected: boolean;
-    onlineUsers: Set<string>;
-    typingUsers: Set<string>;
+    onlineUsers: string[];
+    typingUsers: Map<string, string[]>;
+    emitTyping: (conversationId: string) => void;
+    emitStopTyping: (conversationId: string) => void;
 };
 
 const SocketContext = createContext<SocketContextType | null>(null);
 
 export function SocketProvider({ children }: { children: React.ReactNode }) {
-    const [socket, setSocket] = useState<Socket | null>(null);
+    const [socket, setSocket] = useState<Socket<
+        ServerToClientEvents,
+        ClientToServerEvents
+    > | null>(null);
     const [isConnected, setIsConnected] = useState(false);
-    const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
-    const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
+    const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
+    const [typingUsers, setTypingUsers] = useState<Map<string, string[]>>(
+        new Map()
+    );
     const { data: session } = useSession();
+    const prevSession = useRef("");
 
     useEffect(() => {
         if (!session) {
             console.log("No session found, cannot connect to socket");
             return;
         }
+        // if (session?.user?.id === prevSession.current) return;
+        // prevSession.current = session?.user?.id;
 
-        const socketInstance = io(
-            process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:4000",
-            {
-                // auth: {
-                //     token: session.sessionToken,
-                // },
-                withCredentials: true,
-            }
-        );
+        const socketInstance: Socket<
+            ServerToClientEvents,
+            ClientToServerEvents
+        > = io(process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:4000", {
+            withCredentials: true,
+        });
 
         socketInstance.on("connect", () => {
             console.log("Connected to socket");
@@ -49,25 +60,42 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
 
         socketInstance.on("user:status", ({ userId, status }) => {
             setOnlineUsers((prev) => {
-                const newSet = new Set(prev);
-                if (status === "online") {
-                    newSet.add(userId);
-                } else {
-                    newSet.delete(userId);
+                if (status === "online" && !prev.includes(userId)) {
+                    return [...prev, userId];
                 }
-                return newSet;
+                if (status === "offline") {
+                    return prev.filter((id) => id !== userId);
+                }
+                return prev;
             });
         });
 
-        socketInstance.on("user:typing", (userId: string) => {
-            setTypingUsers((prev) => new Set([...prev, userId]));
+        socketInstance.on("user:typing", ({ conversationId, userId }) => {
+            setTypingUsers((prev) => {
+                const newMap = new Map(prev);
+                const currentTyping = newMap.get(conversationId) || [];
+
+                if (!currentTyping.includes(userId)) {
+                    newMap.set(conversationId, [...currentTyping, userId]);
+                }
+
+                return newMap;
+            });
         });
 
-        socketInstance.on("user:stop_typing", (userId: string) => {
+        socketInstance.on("user:stop_typing", ({ conversationId, userId }) => {
             setTypingUsers((prev) => {
-                const newSet = new Set(prev);
-                newSet.delete(userId);
-                return newSet;
+                const newMap = new Map(prev);
+                const currentTyping = newMap.get(conversationId) || [];
+
+                if (currentTyping.includes(userId)) {
+                    newMap.set(
+                        conversationId,
+                        currentTyping.filter((id) => id !== userId)
+                    );
+                }
+
+                return newMap;
             });
         });
 
@@ -81,13 +109,27 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         return () => {
             socketInstance.disconnect();
         };
-    }, []);
+    }, [session]);
+
+    const emitTyping = (conversationId: string) => {
+        if (socket && isConnected) {
+            socket.emit("conversation:typing", { conversationId });
+        }
+    };
+
+    const emitStopTyping = (conversationId: string) => {
+        if (socket && isConnected) {
+            socket.emit("conversation:stop_typing", { conversationId });
+        }
+    };
 
     const value = {
         socket,
         isConnected,
         onlineUsers,
         typingUsers,
+        emitTyping,
+        emitStopTyping,
     };
 
     return (

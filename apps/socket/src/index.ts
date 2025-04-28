@@ -2,29 +2,38 @@ import http from "node:http";
 import { env } from "@repo/auth/env";
 import { Server } from "socket.io";
 
-import { db, eq, sessions, users } from "@repo/database";
+import {
+    db,
+    eq,
+    type MessageInsert,
+    type MessageWithRelations,
+    sessions,
+    users,
+} from "@repo/database";
 import { type AppRouter, createCaller, createTRPCContext } from "@repo/api";
 import { getTokenExpress } from "@repo/auth/express";
-
-declare module "socket.io" {
-    interface Socket {
-        d: {
-            userId: string;
-            // user: User;
-            api: ReturnType<typeof createCaller>;
-        };
-    }
-}
+import type {
+    ClientToServerEvents,
+    ServerToClientEvents,
+    InterServerEvents,
+    SocketData,
+} from "./types";
 
 const server = http.createServer();
 
 // userId -> socketId
 const onlineUsers = new Map<string, string>();
+// conversationId -> Set of userIds who are typing
+const typingUsers = new Map<string, Set<string>>();
 
-const io = new Server(server, {
+const io = new Server<
+    ClientToServerEvents,
+    ServerToClientEvents,
+    InterServerEvents,
+    SocketData
+>(server, {
     cors: {
-        //todo add hosted url on prod
-        origin: "http://localhost:3000",
+        origin: env.NEXT_PUBLIC_WEB_URL,
         credentials: true,
     },
 });
@@ -52,11 +61,6 @@ io.use(async (socket, next) => {
             );
         }
 
-        // const sessionTest = await getSessionExpress(
-        //     socket.request as unknown as Request
-        // );
-        // console.log({ sessionTest });
-
         const caller = createCaller(
             await createTRPCContext({
                 headers: new Headers(),
@@ -77,11 +81,8 @@ io.use(async (socket, next) => {
             where: eq(users.id, session.sub),
         });
 
-        socket.d = {
-            userId: session.sub,
-            // user: user,
-            api: caller,
-        };
+        socket.data.userId = session.sub;
+        socket.data.api = caller;
 
         if (isRateLimited(session.sub)) {
             socket.emit("error", {
@@ -97,8 +98,8 @@ io.use(async (socket, next) => {
 });
 
 io.on("connection", async (socket) => {
-    const api = socket.d.api;
-    const userId = socket.d.userId;
+    const api = socket.data.api;
+    const userId = socket.data.userId;
 
     // const test = await api.user.search({
     //     query: "@",
@@ -112,14 +113,258 @@ io.on("connection", async (socket) => {
         io.emit("user:status", { userId, status: "online" });
     }
 
-    socket.on("test", (data) => {
-        console.log(data);
+    socket.on("message:send", async (params) => {
+        try {
+            console.log("message:send");
+            if (isRateLimited(userId)) {
+                socket.emit("error", {
+                    message: "You're sending messages too quickly",
+                });
+                return;
+            }
+
+            console.log({
+                params,
+            });
+
+            const messagesResult = await api.message.sendMessage({
+                conversationId: params.conversationId,
+                text: params.text,
+                attachment: params.attachment,
+                repliedToId: params.repliedToId,
+            });
+
+            if (messagesResult.id) {
+                const conversation = await api.conversation.getById({
+                    conversationId: params.conversationId,
+                });
+
+                console.log({
+                    conversation,
+                });
+
+                if (conversation) {
+                    const memberIds = conversation.members.map((m) => m.userId);
+
+                    for (const memberId of memberIds) {
+                        const memberSocketId = onlineUsers.get(memberId);
+                        if (memberSocketId) {
+                            console.log({
+                                memberSocketId,
+                            });
+                            io.to(memberSocketId).emit(
+                                "message:new",
+                                messagesResult
+                            );
+                        }
+                    }
+
+                    const conversationUpdate = {
+                        id: params.conversationId,
+                        lastMessage: messagesResult,
+                        updatedAt: new Date(),
+                    };
+
+                    for (const memberId of memberIds) {
+                        const memberSocketId = onlineUsers.get(memberId);
+                        if (memberSocketId) {
+                            io.to(memberSocketId).emit(
+                                "conversation:update",
+                                conversationUpdate
+                            );
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error("Error sending message:", error);
+            socket.emit("error", {
+                message: "Failed to send message",
+            });
+        }
+    });
+
+    socket.on("message:edit", async (params) => {
+        try {
+            await api.message.editMessage({
+                messageId: params.messageId,
+                text: params.text,
+            });
+
+            const messagesResult = await api.message.editMessage({
+                messageId: params.messageId,
+                text: params.text,
+            });
+
+            if (messagesResult) {
+                const conversation = await api.conversation.getById({
+                    conversationId: messagesResult.conversationId,
+                });
+
+                if (conversation) {
+                    const memberIds = conversation.members.map((m) => m.userId);
+
+                    for (const memberId of memberIds) {
+                        const memberSocketId = onlineUsers.get(memberId);
+                        if (memberSocketId) {
+                            io.to(memberSocketId).emit(
+                                "message:update",
+                                messagesResult
+                            );
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error("Error editing message:", error);
+            socket.emit("error", {
+                message: "Failed to edit message",
+            });
+        }
+    });
+
+    socket.on("message:delete", async (params) => {
+        try {
+            await api.message.deleteMessage({
+                messageId: params.messageId,
+            });
+
+            const memberIds = onlineUsers.keys();
+
+            for (const memberId of memberIds) {
+                const memberSocketId = onlineUsers.get(memberId);
+                if (memberSocketId) {
+                    io.to(memberSocketId).emit("message:delete", {
+                        messageId: params.messageId,
+                        conversationId: params.conversationId,
+                    });
+                }
+            }
+        } catch (error) {
+            console.error("Error deleting message:", error);
+            socket.emit("error", {
+                message: "Failed to delete message",
+            });
+        }
+    });
+
+    socket.on("conversation:read", async (params) => {
+        try {
+            await api.conversation.markAsRead({
+                conversationId: params.conversationId,
+            });
+
+            const conversation = await api.conversation.getById({
+                conversationId: params.conversationId,
+            });
+
+            if (conversation) {
+                const memberIds = conversation.members.map((m) => m.userId);
+                const timestamp = new Date().toISOString();
+
+                for (const memberId of memberIds) {
+                    if (memberId !== userId) {
+                        const memberSocketId = onlineUsers.get(memberId);
+                        if (memberSocketId) {
+                            io.to(memberSocketId).emit("conversation:read", {
+                                conversationId: params.conversationId,
+                                userId,
+                                timestamp,
+                            });
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error("Error marking conversation as read:", error);
+        }
+    });
+
+    socket.on("conversation:typing", async (params) => {
+        try {
+            const { conversationId } = params;
+
+            if (!typingUsers.has(conversationId)) {
+                typingUsers.set(conversationId, new Set<string>());
+            }
+            typingUsers.get(conversationId)?.add(userId);
+
+            console.log({
+                conversationId,
+                userId,
+            });
+
+            const conversation = await api.conversation.getById({
+                conversationId,
+            });
+
+            if (conversation) {
+                const memberIds = conversation.members.map((m) => m.userId);
+
+                for (const memberId of memberIds) {
+                    if (memberId !== userId) {
+                        const memberSocketId = onlineUsers.get(memberId);
+                        if (memberSocketId) {
+                            io.to(memberSocketId).emit("user:typing", {
+                                conversationId,
+                                userId,
+                            });
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error("Error handling typing indicator:", error);
+        }
+    });
+
+    socket.on("conversation:stop_typing", async (params) => {
+        try {
+            const { conversationId } = params;
+
+            typingUsers.get(conversationId)?.delete(userId);
+
+            const conversation = await api.conversation.getById({
+                conversationId,
+            });
+
+            if (conversation) {
+                const memberIds = conversation.members.map((m) => m.userId);
+
+                for (const memberId of memberIds) {
+                    if (memberId !== userId) {
+                        const memberSocketId = onlineUsers.get(memberId);
+                        if (memberSocketId) {
+                            io.to(memberSocketId).emit("user:stop_typing", {
+                                conversationId,
+                                userId,
+                            });
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error("Error handling stop typing indicator:", error);
+        }
     });
 
     socket.on("disconnect", () => {
         console.log(`Socket disconnected: ${socket.id} (User: ${userId})`);
+
         if (userId) {
             onlineUsers.delete(userId);
+
+            for (const [conversationId, users] of typingUsers.entries()) {
+                if (users.has(userId)) {
+                    users.delete(userId);
+
+                    io.emit("user:stop_typing", {
+                        conversationId,
+                        userId,
+                    });
+                }
+            }
+
             io.emit("user:status", { userId, status: "offline" });
         }
     });

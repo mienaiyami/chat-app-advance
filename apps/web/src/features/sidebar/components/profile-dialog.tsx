@@ -53,7 +53,7 @@ export default function ProfileDialog() {
         "avatarUploader",
         {
             onClientUploadComplete: (res) => {
-                if (res && res[0]) {
+                if (res?.[0]) {
                     setAvatarUrl(res[0].ufsUrl);
                     setIsUploading(false);
                     toast.success("Avatar uploaded successfully");

@@ -13,9 +13,7 @@ import { convertHtmlToMarkdown, formatFileSize } from "~/lib/utils";
 import { EmojiPicker } from "~/components/emoji-picker";
 import { toast } from "sonner";
 import { useSession } from "next-auth/react";
-import ReactMarkdown, {
-    type Components as MarkdownComponents,
-} from "react-markdown";
+import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
     Dialog,
@@ -32,75 +30,17 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
-import MessageItem from "./message-item";
+import MessageItem from "./components/message-item";
 import { api } from "~/trpc/react";
 import type { RouterOutputs } from "~/trpc/react";
-import { GroupDetailsDialog } from "./group-details-dialog";
-
+import { GroupDetailsDialog } from "./components/group-details-dialog";
+import { renderers } from "./components/renderers";
+import { useSocket } from "~/providers/socket-provider";
 type Message = RouterOutputs["message"]["getMessages"]["messages"][number];
-
-// Markdown renderer components
-const renderers: MarkdownComponents = {
-    p: ({ children }) => <p className="text-accent-foreground">{children}</p>,
-    strong: ({ children }) => <strong className="font-bold">{children}</strong>,
-    em: ({ children }) => <em className="italic font-sans">{children}</em>,
-    s: ({ children }) => <s className="line-through">{children}</s>,
-    code: ({ children }) => (
-        <code className="bg-accent text-accent-foreground p-1 rounded text-sm ">
-            {children}
-        </code>
-    ),
-    pre: ({ children }) => (
-        <pre className="bg-accent text-accent-foreground p-1 rounded max-w-lg whitespace-pre overflow-x-auto">
-            {children}
-        </pre>
-    ),
-    blockquote: ({ children }) => (
-        <blockquote className="border-l-4 border-gray-500 pl-4 italic">
-            {children}
-        </blockquote>
-    ),
-    a: ({ href, children }) => (
-        <a
-            tabIndex={-1}
-            href={href}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-blue-500 underline"
-        >
-            {children}
-        </a>
-    ),
-    img: ({ src, alt }) => (
-        <img src={src} alt={alt} className="max-w-sm rounded-md" />
-    ),
-    ul: ({ children }) => <ul className="list-disc list-inside">{children}</ul>,
-    ol: ({ children }) => (
-        <ol className="list-decimal list-inside">{children}</ol>
-    ),
-    li: ({ children }) => <li className="mb-1">{children}</li>,
-    h1: ({ children }) => (
-        <h1 className="text-2xl font-bold mb-2">{children}</h1>
-    ),
-    h2: ({ children }) => (
-        <h2 className="text-xl font-bold mb-2">{children}</h2>
-    ),
-    h3: ({ children }) => (
-        <h3 className="text-lg font-bold mb-2">{children}</h3>
-    ),
-    h4: ({ children }) => (
-        <h4 className="text-base font-bold mb-2">{children}</h4>
-    ),
-    h5: ({ children }) => (
-        <h5 className="text-sm font-bold mb-2">{children}</h5>
-    ),
-    h6: ({ children }) => (
-        <h6 className="text-xs font-bold mb-2">{children}</h6>
-    ),
-};
 
 export function ChatArea() {
     const { data: session } = useSession();
+    const { typingUsers, onlineUsers } = useSocket();
     const {
         messages,
         sendMessage,
@@ -124,23 +64,8 @@ export function ChatArea() {
     );
     const membersMap = new Map(membersQuery.data?.map((m) => [m.id, m]) || []);
 
-    // todo: get from socket
-    const onlineContactsQuery = api.user.getContacts.useQuery();
-    const onlineContacts = onlineContactsQuery.data || [];
-
-    const typingUsersQuery = api.user.getTypingUsers.useQuery(
-        {
-            conversationId: activeConversationId || "",
-        },
-        {
-            enabled: !!activeConversationId,
-        }
-    );
-    const typingUsers = typingUsersQuery.data || [];
-
     const [newMessage, setNewMessage] = useState("");
     const [editingMessage, setEditingMessage] = useState<Message | null>(null);
-    const [editText, setEditText] = useState("");
     const [selectedForReply, setSelectedForReply] = useState<Message | null>(
         null
     );
@@ -223,7 +148,6 @@ export function ChatArea() {
     useEffect(() => {
         setNewMessage("");
         setEditingMessage(null);
-        setEditText("");
         msgInputRef.current?.focus();
         setClearChatDialogOpen(false);
         setLeaveGroupDialogOpen(false);
@@ -264,12 +188,25 @@ export function ChatArea() {
             return;
         }
 
-        if (activeConversationId && (newMessage.trim() || selectedFile)) {
+        if (
+            activeConversationId &&
+            currentUser?.id &&
+            (newMessage.trim() || selectedFile)
+        ) {
             sendMessage({
                 conversationId: activeConversationId,
                 text: newMessage.trim(),
                 repliedToId: selectedForReply?.id,
-                attachment: selectedFile || undefined,
+                attachment: selectedFile
+                    ? {
+                          url: URL.createObjectURL(selectedFile),
+                          name: selectedFile.name,
+                          size: selectedFile.size,
+                          fType: "file",
+                          mimeType: selectedFile.type,
+                      }
+                    : null,
+                senderId: currentUser.id,
             });
             setNewMessage("");
             setSelectedFile(null);
@@ -279,14 +216,12 @@ export function ChatArea() {
 
     const handleEditStart = (message: Message) => {
         setEditingMessage(message);
-        setEditText(message.text);
         setNewMessage(message.text);
         msgInputRef.current?.focus();
     };
 
     const handleCancelEdit = () => {
         setEditingMessage(null);
-        setEditText("");
         setNewMessage("");
     };
 
@@ -294,7 +229,6 @@ export function ChatArea() {
         if (editingMessage && newMessage.trim()) {
             editMessage(editingMessage.id, newMessage.trim());
             setEditingMessage(null);
-            setEditText("");
             setNewMessage("");
         }
     };
@@ -390,16 +324,21 @@ export function ChatArea() {
                     <div>
                         <h2 className="font-bold">{chatName}</h2>
                         <p className="text-xs text-muted-foreground">
-                            {typingUsers.length > 0 &&
+                            {typingUsers.size > 0 &&
                                 `${new Intl.ListFormat("en").format(
-                                    typingUsers.map(
-                                        (id) => membersMap.get(id)?.name || ""
+                                    Array.from(typingUsers.values()).flatMap(
+                                        (ids) =>
+                                            ids.map(
+                                                (id) =>
+                                                    membersMap.get(id)?.name ||
+                                                    ""
+                                            )
                                     )
                                 )} is typing...`}
-                            {typingUsers.length === 0 &&
+                            {typingUsers.size === 0 &&
                                 (chatOpened.type === "direct"
-                                    ? onlineContacts.some(
-                                          (c) => c.contactId === currentUser?.id
+                                    ? onlineUsers.some(
+                                          (c) => c === currentUser?.id
                                       )
                                         ? "Online"
                                         : chatOpened.name?.includes(

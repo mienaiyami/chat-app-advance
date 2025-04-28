@@ -51,7 +51,8 @@ export default function MessageItem({
     const isEdited =
         message.updatedAt &&
         // 2 sec extra coz updatedAt is made by js while createdAt is made by db
-        message.updatedAt.getTime() > message.createdAt.getTime() + 2_000;
+        new Date(message.updatedAt).getTime() >
+            new Date(message.createdAt).getTime() + 2_000;
     const canDelete = isCurrentUser || isCurrentUserAdmin;
     const hasAttachment = !!message.attachment;
 
@@ -189,7 +190,7 @@ export default function MessageItem({
 
                 <div className="relative w-full">
                     <div
-                        className={`max-w-2/3 p-2 bg-accent/50 text-accent-foreground w-fit rounded-lg max-w-[80%] break-words ${
+                        className={`max-w-80 lg:max-w-2/3 p-2 bg-accent/50 text-accent-foreground w-fit rounded-lg break-words ${
                             isFirstMessage ? "mb-1" : "my-1"
                         } ${hasAttachment ? "space-y-3" : ""}`}
                     >

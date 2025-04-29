@@ -27,7 +27,6 @@ export const userRouter = createTRPCRouter({
             columns: USER_SELECT,
         });
 
-        console.log({ userId });
         if (!user) {
             throw new TRPCError({
                 code: "UNAUTHORIZED",
@@ -71,7 +70,6 @@ export const userRouter = createTRPCRouter({
         )
         .mutation(async ({ ctx, input }) => {
             const userId = ctx.session.user.id;
-            console.log(input);
 
             const updatedUser = await ctx.db
                 .update(users)
@@ -82,7 +80,6 @@ export const userRouter = createTRPCRouter({
                 })
                 .where(eq(users.id, userId))
                 .returning();
-            console.log(updatedUser[0]);
             return updatedUser[0];
         }),
 
@@ -151,8 +148,6 @@ export const userRouter = createTRPCRouter({
         const settings = await ctx.db.query.userSettings.findFirst({
             where: eq(userSettings.userId, userId),
         });
-
-        console.log(settings);
 
         if (!settings) {
             const defaultSettings = await ctx.db

@@ -8,6 +8,7 @@ import type {
     ClientToServerEvents,
     ServerToClientEvents,
 } from "@app/socket/types";
+import { useRouter } from "next/navigation";
 
 type SocketContextType = {
     socket: Socket<ServerToClientEvents, ClientToServerEvents> | null;
@@ -31,11 +32,14 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         new Map()
     );
     const { data: session } = useSession();
-    const prevSession = useRef("");
+    const router = useRouter();
 
     useEffect(() => {
+        console.log(
+            "socket provider useEffect ----------------------------------"
+        );
         if (!session) {
-            console.log("No session found, cannot connect to socket");
+            router.push("/signin");
             return;
         }
         // if (session?.user?.id === prevSession.current) return;
@@ -107,18 +111,21 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         setSocket(socketInstance);
 
         return () => {
+            console.log(
+                "socket provider off ----------------------------------"
+            );
             socketInstance.disconnect();
         };
-    }, [session]);
+    }, [session?.user.id]);
 
     const emitTyping = (conversationId: string) => {
-        if (socket && isConnected) {
+        if (socket?.connected) {
             socket.emit("conversation:typing", { conversationId });
         }
     };
 
     const emitStopTyping = (conversationId: string) => {
-        if (socket && isConnected) {
+        if (socket?.connected) {
             socket.emit("conversation:stop_typing", { conversationId });
         }
     };

@@ -60,10 +60,14 @@ export const conversationRouter = createTRPCRouter({
             columns: {
                 conversationId: true,
                 lastReadAt: true,
+                muted: true,
             },
         });
         const lastReadMap = new Map(
             membershipData.map((m) => [m.conversationId, m.lastReadAt])
+        );
+        const mutedMap = new Map(
+            membershipData.map((m) => [m.conversationId, m.muted])
         );
 
         const unreadCountsPromises = userConversations.map(
@@ -98,6 +102,7 @@ export const conversationRouter = createTRPCRouter({
         return userConversations.map((conversation) => ({
             ...conversation,
             unreadCount: unreadCountMap.get(conversation.id) || 0,
+            muted: mutedMap.get(conversation.id) || false,
         }));
     }),
 

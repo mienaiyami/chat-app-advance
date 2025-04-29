@@ -43,7 +43,7 @@ export default async function RootLayout({
                         disableTransitionOnChange
                     >
                         <SessionProvider session={session}>
-                            <SocketProvider>{children}</SocketProvider>
+                            {children}
                         </SessionProvider>
                         <Toaster richColors />
                     </ThemeProvider>

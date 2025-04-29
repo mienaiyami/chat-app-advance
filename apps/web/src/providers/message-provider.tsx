@@ -105,12 +105,16 @@ export const MessageProvider = ({
     }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
 
     useEffect(() => {
+        console.log("message provider ----------------------------------");
+        console.log({
+            test: socket?.id,
+        });
         if (!socket || !isConnected) return;
 
         const handleNewMessage = (newMessage: Message) => {
             console.log("newMessage", newMessage);
             if (newMessage.conversationId === activeConversationId) {
-                setMessages((prev) => [newMessage, ...prev]);
+                setMessages((prev) => [...prev, newMessage]);
             }
         };
 
@@ -143,6 +147,9 @@ export const MessageProvider = ({
         socket.on("message:delete", handleDeleteMessage);
 
         return () => {
+            console.log(
+                "message provider off ----------------------------------"
+            );
             socket.off("message:new", handleNewMessage);
             socket.off("message:update", handleUpdateMessage);
             socket.off("message:delete", handleDeleteMessage);

@@ -20,7 +20,7 @@ declare module "next-auth" {
             // ...other properties
             // role: UserRole;
         } & DefaultSession["user"];
-        sessionToken: string;
+        // sessionToken: string;
     }
 
     // interface User {

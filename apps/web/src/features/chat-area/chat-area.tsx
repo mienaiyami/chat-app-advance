@@ -475,14 +475,7 @@ export function ChatArea() {
                                 <DialogClose asChild>
                                     <Button
                                         variant="destructive"
-                                        onClick={() => {
-                                            if (chatOpened && currentUser) {
-                                                removeMember({
-                                                    groupId: chatOpened.id,
-                                                    userId: currentUser.id,
-                                                });
-                                            }
-                                        }}
+                                        onClick={leaveGroup}
                                     >
                                         Leave
                                     </Button>

@@ -2,14 +2,6 @@ import http from "node:http";
 import { env } from "@repo/auth/env";
 import { Server } from "socket.io";
 
-import {
-    db,
-    eq,
-    type MessageInsert,
-    type MessageWithRelations,
-    sessions,
-    users,
-} from "@repo/database";
 import { type AppRouter, createCaller, createTRPCContext } from "@repo/api";
 import { getTokenExpress } from "@repo/auth/express";
 import type {
@@ -21,8 +13,8 @@ import type {
 
 const server = http.createServer();
 
-// userId -> socketId
-const onlineUsers = new Map<string, string>();
+// userId -> [socketId]
+const onlineUsers = new Map<string, Set<string>>();
 // conversationId -> Set of userIds who are typing
 const typingUsers = new Map<string, Set<string>>();
 
@@ -54,7 +46,6 @@ io.use(async (socket, next) => {
         const session = await getTokenExpress(
             socket.request as unknown as Request
         );
-        // console.log({ session });
         if (!session || !session.sub || !session.exp) {
             return next(
                 new Error("Authentication error: Invalid or expired session")
@@ -72,24 +63,20 @@ io.use(async (socket, next) => {
                         name: session.name,
                     },
                     expires: new Date(session.exp * 1000).toISOString(),
-                    sessionToken: "",
+                    // sessionToken: "",
                 },
             })
         );
 
-        const user = await db.query.users.findFirst({
-            where: eq(users.id, session.sub),
-        });
-
         socket.data.userId = session.sub;
         socket.data.api = caller;
 
-        if (isRateLimited(session.sub)) {
-            socket.emit("error", {
-                message: "You're sending messages too quickly",
-            });
-            return;
-        }
+        // if (isRateLimited(session.sub)) {
+        //     socket.emit("error", {
+        //         message: "You're sending messages too quickly",
+        //     });
+        //     return;
+        // }
         next();
     } catch (error) {
         console.error("Socket authentication error:", error);
@@ -109,7 +96,10 @@ io.on("connection", async (socket) => {
     console.log(`Socket connected: ${socket.id} (User: ${userId})`);
 
     if (userId) {
-        onlineUsers.set(userId, socket.id);
+        if (!onlineUsers.has(userId)) {
+            onlineUsers.set(userId, new Set<string>());
+        }
+        onlineUsers.get(userId)?.add(socket.id);
         io.emit("user:status", { userId, status: "online" });
     }
 
@@ -123,10 +113,6 @@ io.on("connection", async (socket) => {
                 return;
             }
 
-            console.log({
-                params,
-            });
-
             const messagesResult = await api.message.sendMessage({
                 conversationId: params.conversationId,
                 text: params.text,
@@ -139,20 +125,14 @@ io.on("connection", async (socket) => {
                     conversationId: params.conversationId,
                 });
 
-                console.log({
-                    conversation,
-                });
+                console.log(`message:send ${messagesResult.id}`);
 
                 if (conversation) {
                     const memberIds = conversation.members.map((m) => m.userId);
-
                     for (const memberId of memberIds) {
-                        const memberSocketId = onlineUsers.get(memberId);
-                        if (memberSocketId) {
-                            console.log({
-                                memberSocketId,
-                            });
-                            io.to(memberSocketId).emit(
+                        const memberSocketIds = onlineUsers.get(memberId);
+                        if (memberSocketIds) {
+                            io.to(Array.from(memberSocketIds)).emit(
                                 "message:new",
                                 messagesResult
                             );
@@ -166,9 +146,9 @@ io.on("connection", async (socket) => {
                     };
 
                     for (const memberId of memberIds) {
-                        const memberSocketId = onlineUsers.get(memberId);
-                        if (memberSocketId) {
-                            io.to(memberSocketId).emit(
+                        const memberSocketIds = onlineUsers.get(memberId);
+                        if (memberSocketIds) {
+                            io.to(Array.from(memberSocketIds)).emit(
                                 "conversation:update",
                                 conversationUpdate
                             );
@@ -207,7 +187,7 @@ io.on("connection", async (socket) => {
                     for (const memberId of memberIds) {
                         const memberSocketId = onlineUsers.get(memberId);
                         if (memberSocketId) {
-                            io.to(memberSocketId).emit(
+                            io.to(Array.from(memberSocketId)).emit(
                                 "message:update",
                                 messagesResult
                             );
@@ -234,7 +214,7 @@ io.on("connection", async (socket) => {
             for (const memberId of memberIds) {
                 const memberSocketId = onlineUsers.get(memberId);
                 if (memberSocketId) {
-                    io.to(memberSocketId).emit("message:delete", {
+                    io.to(Array.from(memberSocketId)).emit("message:delete", {
                         messageId: params.messageId,
                         conversationId: params.conversationId,
                     });
@@ -264,13 +244,16 @@ io.on("connection", async (socket) => {
 
                 for (const memberId of memberIds) {
                     if (memberId !== userId) {
-                        const memberSocketId = onlineUsers.get(memberId);
-                        if (memberSocketId) {
-                            io.to(memberSocketId).emit("conversation:read", {
-                                conversationId: params.conversationId,
-                                userId,
-                                timestamp,
-                            });
+                        const memberSocketIds = onlineUsers.get(memberId);
+                        if (memberSocketIds) {
+                            io.to(Array.from(memberSocketIds)).emit(
+                                "conversation:read",
+                                {
+                                    conversationId: params.conversationId,
+                                    userId,
+                                    timestamp,
+                                }
+                            );
                         }
                     }
                 }
@@ -303,12 +286,15 @@ io.on("connection", async (socket) => {
 
                 for (const memberId of memberIds) {
                     if (memberId !== userId) {
-                        const memberSocketId = onlineUsers.get(memberId);
-                        if (memberSocketId) {
-                            io.to(memberSocketId).emit("user:typing", {
-                                conversationId,
-                                userId,
-                            });
+                        const memberSocketIds = onlineUsers.get(memberId);
+                        if (memberSocketIds) {
+                            io.to(Array.from(memberSocketIds)).emit(
+                                "user:typing",
+                                {
+                                    conversationId,
+                                    userId,
+                                }
+                            );
                         }
                     }
                 }
@@ -333,12 +319,15 @@ io.on("connection", async (socket) => {
 
                 for (const memberId of memberIds) {
                     if (memberId !== userId) {
-                        const memberSocketId = onlineUsers.get(memberId);
-                        if (memberSocketId) {
-                            io.to(memberSocketId).emit("user:stop_typing", {
-                                conversationId,
-                                userId,
-                            });
+                        const memberSocketIds = onlineUsers.get(memberId);
+                        if (memberSocketIds) {
+                            io.to(Array.from(memberSocketIds)).emit(
+                                "user:stop_typing",
+                                {
+                                    conversationId,
+                                    userId,
+                                }
+                            );
                         }
                     }
                 }
@@ -352,7 +341,10 @@ io.on("connection", async (socket) => {
         console.log(`Socket disconnected: ${socket.id} (User: ${userId})`);
 
         if (userId) {
-            onlineUsers.delete(userId);
+            onlineUsers.get(userId)?.delete(socket.id);
+            if (onlineUsers.get(userId)?.size === 0) {
+                onlineUsers.delete(userId);
+            }
 
             for (const [conversationId, users] of typingUsers.entries()) {
                 if (users.has(userId)) {

@@ -33,10 +33,6 @@ export default function Sidebar() {
         enabled: !!session?.user.id,
     });
 
-    const onlineContacts = api.user.getContacts.useQuery(undefined, {
-        enabled: !!session?.user.id,
-    });
-
     if (isLoading || userSettings.isLoading) {
         return (
             <div className="flex w-1/2 flex-shrink-0 select-none flex-col rounded-l-lg border sm:w-72 lg:w-96">
@@ -121,12 +117,8 @@ export default function Sidebar() {
 
                             const conversationId = conversation.id;
 
-                            // const isMuted =
-                            //     userSettings.data?.mutedChats?.includes(
-                            //         conversationId
-                            //     ) || false;
-
                             const unreadCount = conversation.unreadCount || 0;
+                            const isMuted = conversation.muted || false;
 
                             return (
                                 <Button
@@ -184,11 +176,6 @@ export default function Sidebar() {
                                                           : "")
                                                     : "No messages yet"}
                                             </span>
-                                            {/* {!isMuted && unreadCount > 0 && (
-                                                <span className="ml-auto bg-primary text-secondary rounded-full aspect-square w-4 text-xs">
-                                                    {unreadCount}
-                                                </span>
-                                            )}
                                             {isMuted && (
                                                 <span className="ml-auto text-muted-foreground">
                                                     <VolumeOff className="w-4 h-4" />
@@ -196,7 +183,7 @@ export default function Sidebar() {
                                                         Muted Chat
                                                     </span>
                                                 </span>
-                                            )} */}
+                                            )}
                                             {unreadCount > 0 && (
                                                 <span className="ml-auto bg-primary text-secondary rounded-full aspect-square w-4 text-xs">
                                                     {unreadCount}

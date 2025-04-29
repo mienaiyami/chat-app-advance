@@ -24,7 +24,9 @@ export default async function ChatLayout({ children }: ChatLayoutProps) {
         <SocketProvider>
             <ConversationProvider>
                 <MessageProvider>
-                    <div className="flex h-screen w-full">{children}</div>
+                    <div className="grid place-items-center h-screen w-full">
+                        {children}
+                    </div>
                 </MessageProvider>
             </ConversationProvider>
         </SocketProvider>

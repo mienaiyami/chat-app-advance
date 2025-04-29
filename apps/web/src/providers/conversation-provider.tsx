@@ -23,7 +23,6 @@ export interface Conversation {
     updatedAt: Date | null;
     lastMessage?: string | null;
     lastMessageAt?: Date | null;
-    unreadCount: number;
     members: {
         userId: string;
         user: {
@@ -32,6 +31,9 @@ export interface Conversation {
             image: string | null;
         };
     }[];
+    //
+    unreadCount: number;
+    muted: boolean;
 }
 
 interface ConversationContextType {

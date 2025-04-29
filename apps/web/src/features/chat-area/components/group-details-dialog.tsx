@@ -20,8 +20,12 @@ import {
 } from "~/components/ui/dropdown-menu";
 import {
     CalendarDays,
+    Check,
+    Copy,
     Edit,
+    Link,
     MoreVertical,
+    RefreshCw,
     Search,
     User,
     UserPlus,
@@ -33,6 +37,7 @@ import { toast } from "sonner";
 import { useSession } from "next-auth/react";
 import { useDialog } from "~/hooks/use-dialog";
 import { GroupDetailsEditDialog } from "./group-details-edit-dialog";
+import { Alert, AlertDescription } from "~/components/ui/alert";
 
 type GroupDetailsDialogProps = {
     conversationId: string;
@@ -48,20 +53,35 @@ export function GroupDetailsDialog({
     const currentUserId = session?.user?.id;
     const groupDetailsEditDialog = useDialog<HTMLButtonElement>();
     const utils = api.useUtils();
+    const [inviteLinkCopied, setInviteLinkCopied] = useState(false);
 
-    // Get conversation details
     const { data: conversationDetails } = api.conversation.getById.useQuery(
         { conversationId },
         { enabled: !!conversationId }
     );
 
-    // Get members
     const { data: members = [] } = api.user.getMembers.useQuery(
         { conversationId },
         { enabled: !!conversationId }
     );
 
-    // tRPC mutations
+    const {
+        data: joinLink,
+        isLoading: isLoadingJoinLink,
+        isError: isJoinLinkError,
+        refetch: refetchJoinLink,
+    } = api.conversation.getJoinLink.useQuery(
+        { conversationId },
+        {
+            enabled:
+                !!conversationId &&
+                !!conversationDetails &&
+                conversationDetails.type === "group" &&
+                !conversationDetails.isPrivate,
+            retry: false,
+        }
+    );
+
     const updateRoleMutation = api.conversation.updateRole.useMutation({
         onSuccess: () => {
             toast.success("Admin status updated successfully");
@@ -82,6 +102,16 @@ export function GroupDetailsDialog({
         },
     });
 
+    const createJoinLinkMutation = api.conversation.createJoinLink.useMutation({
+        onSuccess: () => {
+            toast.success("Invite link created successfully");
+            refetchJoinLink();
+        },
+        onError: (error) => {
+            toast.error(error.message || "Failed to create invite link");
+        },
+    });
+
     if (!conversationDetails || conversationDetails.type !== "group")
         return null;
 
@@ -97,6 +127,36 @@ export function GroupDetailsDialog({
 
     const isAdmin =
         members.find((m) => m.id === currentUserId)?.role === "admin";
+
+    const handleCopyInviteLink = async () => {
+        if (!joinLink) return;
+
+        const inviteUrl = `${window.location.origin}/join/${joinLink.token}`;
+
+        try {
+            await navigator.clipboard.writeText(inviteUrl);
+            setInviteLinkCopied(true);
+            toast.success("Invite link copied to clipboard");
+
+            setTimeout(() => {
+                setInviteLinkCopied(false);
+            }, 3000);
+        } catch (error) {
+            toast.error("Failed to copy invite link");
+        }
+    };
+
+    const handleCreateInviteLink = () => {
+        if (conversationDetails.isPrivate) {
+            toast.error("Cannot create invite link for private groups");
+            return;
+        }
+
+        createJoinLinkMutation.mutate({
+            conversationId,
+            expiresInDays: 7,
+        });
+    };
 
     return (
         <DialogContent className="sm:max-w-[425px] cursor-default">
@@ -130,6 +190,93 @@ export function GroupDetailsDialog({
                     Created on:{" "}
                     {formatDate(new Date(conversationDetails.createdAt))}
                 </p>
+
+                {!conversationDetails.isPrivate && (
+                    <div className="mt-2 space-y-2">
+                        <h3 className="font-semibold flex items-center gap-1">
+                            <Link className="h-4 w-4" />
+                            Invite Link
+                        </h3>
+
+                        {isLoadingJoinLink ? (
+                            <div className="text-sm text-muted-foreground">
+                                Loading invite link...
+                            </div>
+                        ) : isJoinLinkError || !joinLink ? (
+                            isAdmin ? (
+                                <div className="space-y-2">
+                                    <p className="text-sm text-muted-foreground">
+                                        No invite link available.
+                                    </p>
+                                    <Button
+                                        size="sm"
+                                        className="w-full"
+                                        onClick={handleCreateInviteLink}
+                                        disabled={
+                                            createJoinLinkMutation.isPending
+                                        }
+                                    >
+                                        {createJoinLinkMutation.isPending ? (
+                                            "Creating..."
+                                        ) : (
+                                            <>
+                                                <Link className="h-4 w-4 mr-2" />
+                                                Create Invite Link
+                                            </>
+                                        )}
+                                    </Button>
+                                </div>
+                            ) : (
+                                <p className="text-sm text-muted-foreground">
+                                    No invite link available. Ask an admin to
+                                    create one.
+                                </p>
+                            )
+                        ) : (
+                            <div className="space-y-2">
+                                <div className="flex items-center gap-2">
+                                    <Input
+                                        value={`${window.location.origin}/join/${joinLink.token}`}
+                                        readOnly
+                                        className="text-xs"
+                                    />
+                                    <Button
+                                        size="icon"
+                                        variant="outline"
+                                        onClick={handleCopyInviteLink}
+                                        title="Copy invite link"
+                                        disabled={inviteLinkCopied}
+                                    >
+                                        {inviteLinkCopied ? (
+                                            <Check className="h-4 w-4" />
+                                        ) : (
+                                            <Copy className="h-4 w-4" />
+                                        )}
+                                    </Button>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                    Expires:{" "}
+                                    {formatDate(new Date(joinLink.expiresAt))}
+                                </p>
+                                {isAdmin && (
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="w-full"
+                                        onClick={handleCreateInviteLink}
+                                        disabled={
+                                            createJoinLinkMutation.isPending
+                                        }
+                                    >
+                                        <RefreshCw className="h-4 w-4 mr-2" />
+                                        Regenerate Link
+                                    </Button>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 <div className="select-none">
                     <h3 className="mb-2 text-lg font-semibold relative">
                         Members

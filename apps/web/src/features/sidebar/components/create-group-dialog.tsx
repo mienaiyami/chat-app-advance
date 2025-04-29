@@ -174,7 +174,7 @@ export default function CreateGroupDialog() {
                             }
                         />
                         <Label htmlFor="isPrivate" className="cursor-pointer">
-                            Private Group (invitation only)
+                            Private Group (manual add only)
                         </Label>
                     </div>
                     <div className="grid gap-2">

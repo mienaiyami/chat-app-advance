@@ -6,8 +6,9 @@ import {
     conversations,
     messages,
     users,
+    conversationJoinLinks,
 } from "@repo/database/schema";
-import { and, eq, gt, inArray, sql, not } from "@repo/database";
+import { and, eq, gt, inArray, sql, not, isNull, lt } from "@repo/database";
 
 const MEMBER_SELECT = {
     columns: {
@@ -398,6 +399,33 @@ export const conversationRouter = createTRPCRouter({
                     code: "FORBIDDEN",
                     message: "Only group admins can update the conversation",
                 });
+            }
+
+            if (
+                input.isPrivate !== undefined &&
+                input.isPrivate !== conversation.isPrivate
+            ) {
+                if (input.isPrivate) {
+                    await ctx.db
+                        .delete(conversationJoinLinks)
+                        .where(
+                            eq(
+                                conversationJoinLinks.conversationId,
+                                input.conversationId
+                            )
+                        );
+                } else {
+                    const expiresAt = new Date();
+                    expiresAt.setDate(expiresAt.getDate() + 7);
+
+                    await ctx.db
+                        .insert(conversationJoinLinks)
+                        .values({
+                            conversationId: input.conversationId,
+                            expiresAt,
+                        })
+                        .onConflictDoNothing();
+                }
             }
 
             const [updatedConversation] = await ctx.db
@@ -1024,5 +1052,352 @@ export const conversationRouter = createTRPCRouter({
                 );
 
             return { success: true };
+        }),
+
+    getJoinLink: protectedProcedure
+        .input(z.object({ conversationId: z.string() }))
+        .query(async ({ ctx, input }) => {
+            const userId = ctx.session.user.id;
+
+            const membership = await ctx.db.query.conversationMembers.findFirst(
+                {
+                    where: and(
+                        eq(
+                            conversationMembers.conversationId,
+                            input.conversationId
+                        ),
+                        eq(conversationMembers.userId, userId)
+                    ),
+                }
+            );
+
+            if (!membership) {
+                throw new TRPCError({
+                    code: "FORBIDDEN",
+                    message: "You are not a member of this conversation",
+                });
+            }
+
+            const conversation = await ctx.db.query.conversations.findFirst({
+                where: eq(conversations.id, input.conversationId),
+            });
+
+            if (!conversation) {
+                throw new TRPCError({
+                    code: "NOT_FOUND",
+                    message: "Conversation not found",
+                });
+            }
+
+            if (conversation.type !== "group") {
+                throw new TRPCError({
+                    code: "BAD_REQUEST",
+                    message: "Join links are only for group conversations",
+                });
+            }
+
+            if (conversation.isPrivate) {
+                throw new TRPCError({
+                    code: "FORBIDDEN",
+                    message: "Cannot get join link for private groups",
+                });
+            }
+
+            const joinLink = await ctx.db.query.conversationJoinLinks.findFirst(
+                {
+                    where: eq(
+                        conversationJoinLinks.conversationId,
+                        input.conversationId
+                    ),
+                }
+            );
+
+            if (!joinLink) {
+                throw new TRPCError({
+                    code: "NOT_FOUND",
+                    message: "No join link found",
+                });
+            }
+
+            return joinLink;
+        }),
+
+    createJoinLink: protectedProcedure
+        .input(
+            z.object({
+                conversationId: z.string(),
+                expiresInDays: z.number().min(1).max(30).default(7),
+            })
+        )
+        .mutation(async ({ ctx, input }) => {
+            const userId = ctx.session.user.id;
+
+            const isAdmin = await ctx.db.query.conversationMembers.findFirst({
+                where: and(
+                    eq(
+                        conversationMembers.conversationId,
+                        input.conversationId
+                    ),
+                    eq(conversationMembers.userId, userId),
+                    eq(conversationMembers.role, "admin")
+                ),
+            });
+
+            if (!isAdmin) {
+                throw new TRPCError({
+                    code: "FORBIDDEN",
+                    message: "Only group admins can create join links",
+                });
+            }
+
+            const conversation = await ctx.db.query.conversations.findFirst({
+                where: eq(conversations.id, input.conversationId),
+            });
+
+            if (!conversation) {
+                throw new TRPCError({
+                    code: "NOT_FOUND",
+                    message: "Conversation not found",
+                });
+            }
+
+            if (conversation.type !== "group") {
+                throw new TRPCError({
+                    code: "BAD_REQUEST",
+                    message: "Join links are only for group conversations",
+                });
+            }
+
+            if (conversation.isPrivate) {
+                throw new TRPCError({
+                    code: "FORBIDDEN",
+                    message: "Cannot create join link for private groups",
+                });
+            }
+
+            await ctx.db
+                .delete(conversationJoinLinks)
+                .where(
+                    eq(
+                        conversationJoinLinks.conversationId,
+                        input.conversationId
+                    )
+                );
+
+            const expiresAt = new Date();
+            expiresAt.setDate(expiresAt.getDate() + input.expiresInDays);
+
+            const [newJoinLink] = await ctx.db
+                .insert(conversationJoinLinks)
+                .values({
+                    conversationId: input.conversationId,
+                    expiresAt,
+                })
+                .returning();
+
+            return newJoinLink;
+        }),
+
+    deleteJoinLink: protectedProcedure
+        .input(z.object({ conversationId: z.string() }))
+        .mutation(async ({ ctx, input }) => {
+            const userId = ctx.session.user.id;
+
+            const isAdmin = await ctx.db.query.conversationMembers.findFirst({
+                where: and(
+                    eq(
+                        conversationMembers.conversationId,
+                        input.conversationId
+                    ),
+                    eq(conversationMembers.userId, userId),
+                    eq(conversationMembers.role, "admin")
+                ),
+            });
+
+            if (!isAdmin) {
+                throw new TRPCError({
+                    code: "FORBIDDEN",
+                    message: "Only group admins can delete join links",
+                });
+            }
+
+            await ctx.db
+                .delete(conversationJoinLinks)
+                .where(
+                    eq(
+                        conversationJoinLinks.conversationId,
+                        input.conversationId
+                    )
+                );
+
+            return { success: true };
+        }),
+
+    joinByLink: protectedProcedure
+        .input(z.object({ token: z.string() }))
+        .mutation(async ({ ctx, input }) => {
+            const userId = ctx.session.user.id;
+
+            const joinLink = await ctx.db.query.conversationJoinLinks.findFirst(
+                {
+                    where: and(
+                        eq(conversationJoinLinks.token, input.token),
+                        lt(conversationJoinLinks.expiresAt, new Date())
+                    ),
+                }
+            );
+
+            if (!joinLink) {
+                throw new TRPCError({
+                    code: "NOT_FOUND",
+                    message: "Invalid or expired invite link",
+                });
+            }
+
+            if (new Date() > joinLink.expiresAt) {
+                await ctx.db
+                    .delete(conversationJoinLinks)
+                    .where(eq(conversationJoinLinks.token, input.token));
+
+                throw new TRPCError({
+                    code: "BAD_REQUEST",
+                    message: "Invite link has expired",
+                });
+            }
+
+            const conversation = await ctx.db.query.conversations.findFirst({
+                where: eq(conversations.id, joinLink.conversationId),
+            });
+
+            if (!conversation) {
+                throw new TRPCError({
+                    code: "NOT_FOUND",
+                    message: "Conversation not found",
+                });
+            }
+
+            if (conversation.type !== "group") {
+                throw new TRPCError({
+                    code: "BAD_REQUEST",
+                    message: "Can only join group conversations",
+                });
+            }
+
+            if (conversation.isPrivate) {
+                throw new TRPCError({
+                    code: "FORBIDDEN",
+                    message: "Cannot join private group conversations",
+                });
+            }
+
+            const existingMembership =
+                await ctx.db.query.conversationMembers.findFirst({
+                    where: and(
+                        eq(
+                            conversationMembers.conversationId,
+                            joinLink.conversationId
+                        ),
+                        eq(conversationMembers.userId, userId)
+                    ),
+                });
+
+            if (existingMembership) {
+                return {
+                    success: true,
+                    conversationId: joinLink.conversationId,
+                };
+            }
+
+            await ctx.db.insert(conversationMembers).values({
+                conversationId: joinLink.conversationId,
+                userId,
+                role: "member",
+            });
+
+            return { success: true, conversationId: joinLink.conversationId };
+        }),
+
+    getGroupPreviewByToken: protectedProcedure
+        .input(z.object({ token: z.string() }))
+        .query(async ({ ctx, input }) => {
+            const joinLink = await ctx.db.query.conversationJoinLinks.findFirst(
+                {
+                    where: eq(conversationJoinLinks.token, input.token),
+                }
+            );
+
+            if (!joinLink) {
+                throw new TRPCError({
+                    code: "NOT_FOUND",
+                    message: "Invalid or expired invite link",
+                });
+            }
+
+            if (new Date() > joinLink.expiresAt) {
+                await ctx.db
+                    .delete(conversationJoinLinks)
+                    .where(eq(conversationJoinLinks.token, input.token));
+
+                throw new TRPCError({
+                    code: "BAD_REQUEST",
+                    message: "Invite link has expired",
+                });
+            }
+
+            const conversation = await ctx.db.query.conversations.findFirst({
+                where: eq(conversations.id, joinLink.conversationId),
+                columns: {
+                    id: true,
+                    name: true,
+                    image: true,
+                    description: true,
+                    isPrivate: true,
+                    createdAt: true,
+                    type: true,
+                },
+            });
+
+            if (!conversation) {
+                throw new TRPCError({
+                    code: "NOT_FOUND",
+                    message: "Conversation not found",
+                });
+            }
+
+            if (conversation.type !== "group") {
+                throw new TRPCError({
+                    code: "BAD_REQUEST",
+                    message: "Can only join group conversations",
+                });
+            }
+
+            if (conversation.isPrivate) {
+                throw new TRPCError({
+                    code: "FORBIDDEN",
+                    message: "Cannot join private group conversations",
+                });
+            }
+
+            const memberCount = await ctx.db
+                .select({ count: sql`count(*)`.mapWith(Number) })
+                .from(conversationMembers)
+                .where(eq(conversationMembers.conversationId, conversation.id))
+                .then((result) => result[0]?.count ?? 0);
+
+            const userId = ctx.session.user.id;
+            const isAlreadyMember =
+                await ctx.db.query.conversationMembers.findFirst({
+                    where: and(
+                        eq(conversationMembers.conversationId, conversation.id),
+                        eq(conversationMembers.userId, userId)
+                    ),
+                });
+
+            return {
+                ...conversation,
+                memberCount,
+                isAlreadyMember: !!isAlreadyMember,
+                expiresAt: joinLink.expiresAt,
+            };
         }),
 });

@@ -83,6 +83,32 @@ export const conversations = createTable(
     ]
 );
 
+export const conversationJoinLinks = createTable(
+    "conversation_join_link",
+    (d) => ({
+        token: d
+            .varchar({ length: 255 })
+            .notNull()
+            .$defaultFn(() => crypto.randomUUID()),
+        conversationId: d
+            .varchar({ length: 255 })
+            .notNull()
+            .references(() => conversations.id, { onDelete: "cascade" }),
+        createdAt: d
+            .timestamp({ withTimezone: true })
+            .default(sql`CURRENT_TIMESTAMP`)
+            .notNull(),
+        expiresAt: d.timestamp({ withTimezone: true }).notNull(),
+    }),
+    (t) => [
+        primaryKey({ columns: [t.token, t.conversationId] }),
+        uniqueIndex("conversation_join_link_token_idx").on(t.token),
+        index("conversation_join_link_conversation_id_idx").on(
+            t.conversationId
+        ),
+    ]
+);
+
 export const conversationMemberRoles = pgEnum("conversation_member_role", [
     "owner",
     "admin",

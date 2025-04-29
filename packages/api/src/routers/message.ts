@@ -100,12 +100,13 @@ export const messageRouter = createTRPCRouter({
                         eq(conversationMembers.userId, userId)
                     )
                 );
-
+            const nextCursor = input.cursor
+                ? Number(input.cursor) + conversationMessages.length
+                : conversationMessages.length;
             return {
-                messages: conversationMessages.reverse(),
-                nextCursor: input.cursor
-                    ? Number(input.cursor) + conversationMessages.length
-                    : conversationMessages.length,
+                messages: conversationMessages,
+                nextCursor:
+                    nextCursor === totalCount[0]?.count ? null : nextCursor,
             };
         }),
 

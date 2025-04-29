@@ -35,11 +35,8 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     const router = useRouter();
 
     useEffect(() => {
-        console.log(
-            "socket provider useEffect ----------------------------------"
-        );
         if (!session) {
-            router.push("/signin");
+            router.push("/auth/signin");
             return;
         }
         // if (session?.user?.id === prevSession.current) return;
@@ -111,9 +108,6 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         setSocket(socketInstance);
 
         return () => {
-            console.log(
-                "socket provider off ----------------------------------"
-            );
             socketInstance.disconnect();
         };
     }, [session?.user.id]);

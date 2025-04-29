@@ -91,9 +91,9 @@ export const MessageProvider = ({
 
     useEffect(() => {
         if (messagesData?.pages) {
-            const allMessages = messagesData.pages.flatMap(
-                (page) => page.messages
-            );
+            const allMessages = messagesData.pages
+                .flatMap((page) => page.messages)
+                .reverse();
             setMessages(allMessages);
         }
     }, [messagesData]);
@@ -105,10 +105,6 @@ export const MessageProvider = ({
     }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
 
     useEffect(() => {
-        console.log("message provider ----------------------------------");
-        console.log({
-            test: socket?.id,
-        });
         if (!socket || !isConnected) return;
 
         const handleNewMessage = (newMessage: Message) => {
@@ -147,9 +143,6 @@ export const MessageProvider = ({
         socket.on("message:delete", handleDeleteMessage);
 
         return () => {
-            console.log(
-                "message provider off ----------------------------------"
-            );
             socket.off("message:new", handleNewMessage);
             socket.off("message:update", handleUpdateMessage);
             socket.off("message:delete", handleDeleteMessage);

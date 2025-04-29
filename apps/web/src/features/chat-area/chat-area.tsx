@@ -46,9 +46,11 @@ export function ChatArea() {
         sendMessage,
         editMessage,
         deleteMessage,
-        markAsRead,
+        hasMore,
         isSending,
         isUploadingFile,
+        loadMoreMessages,
+        isLoadingMore,
         handleTyping,
     } = useMessage();
 
@@ -503,6 +505,21 @@ export function ChatArea() {
                     className="overflow-y-auto p-4 h-full"
                     ref={scrollAreaRef}
                 >
+                    {hasMore && (
+                        <div className="flex justify-center mb-4">
+                            <Button
+                                variant="outline"
+                                disabled={isLoadingMore}
+                                onClick={loadMoreMessages}
+                            >
+                                {isLoadingMore ? (
+                                    <Loader2 className="h-5 w-5 animate-spin" />
+                                ) : (
+                                    "Load More"
+                                )}
+                            </Button>
+                        </div>
+                    )}
                     {messages.map((message, i, arr) => (
                         <MessageItem
                             key={message.id}

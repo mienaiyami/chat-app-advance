@@ -80,7 +80,7 @@ export default function MessageItem({
 
     return (
         <div
-            className={`group/message hover:bg-accent/10 rounded-md relative flex flex-col items-start ${
+            className={`group/message hover:bg-accent/10 rounded-sm relative flex flex-col items-start ${
                 isRepliedTo ? "bg-accent/20" : ""
             }`}
             onMouseEnter={() => setShowActions(true)}
@@ -200,7 +200,7 @@ export default function MessageItem({
 
                 <div className="relative w-full">
                     <div
-                        className={`max-w-80 lg:max-w-2/3 p-2 bg-accent/50 text-accent-foreground w-fit rounded-lg break-words ${
+                        className={`max-w-80 lg:max-w-2/3 p-2 bg-accent/50 text-accent-foreground w-fit rounded-sm break-words ${
                             isFirstMessage ? "mb-1" : "my-1"
                         } ${hasAttachment ? "space-y-3" : ""}`}
                     >

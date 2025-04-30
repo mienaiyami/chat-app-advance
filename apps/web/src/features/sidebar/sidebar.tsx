@@ -17,6 +17,8 @@ import ProfileDialog from "./components/profile-dialog";
 import AddContactDialog from "./components/add-contact-dialog";
 import CreateGroupDialog from "./components/create-group-dialog";
 import { useRouter } from "next/navigation";
+import { Skeleton } from "~/components/ui/skeleton";
+
 export default function Sidebar() {
     const [searchQuery, setSearchQuery] = useState("");
     const { data: session } = useSession();
@@ -32,14 +34,6 @@ export default function Sidebar() {
     const userSettings = api.user.getSettings.useQuery(undefined, {
         enabled: !!session?.user.id,
     });
-
-    if (isLoading || userSettings.isLoading) {
-        return (
-            <div className="flex w-1/2 flex-shrink-0 select-none flex-col rounded-l-lg border sm:w-72 lg:w-96">
-                Loading...
-            </div>
-        );
-    }
 
     const filteredConversations = conversations.filter(
         (conversation) =>
@@ -59,7 +53,7 @@ export default function Sidebar() {
     };
 
     return (
-        <div className="w-full flex-shrink-0 border rounded-l-lg flex flex-col ">
+        <div className="w-full flex-shrink-0 border rounded-l-lg flex flex-col">
             <TooltipProvider
                 delayDuration={500}
                 disableHoverableContent
@@ -70,10 +64,10 @@ export default function Sidebar() {
                     <AddContactDialog />
                     <CreateGroupDialog />
                 </div>
-                <div className="p-4 relative">
+                <div className="p-2 relative">
                     <Search
                         size={"1.3em"}
-                        className="text-muted-foreground pointer-events-none absolute top top-1/2 -translate-y-1/2 left-6"
+                        className="text-muted-foreground pointer-events-none absolute top top-1/2 -translate-y-1/2 left-4"
                     />
                     <Input
                         placeholder="Search"
@@ -83,19 +77,35 @@ export default function Sidebar() {
                     />
                 </div>
                 <ScrollArea className="flex-grow">
-                    {(() => {
-                        if (filteredConversations.length === 0) {
-                            return (
-                                <div className="flex-grow flex items-center justify-center select-none">
-                                    <span className="text-muted-foreground">
-                                        No contacts/chat found
-                                    </span>
-                                </div>
-                            );
-                        }
-
-                        return filteredConversations.map((conversation) => {
-                            // Get the other user in direct conversations
+                    {isLoading || userSettings.isLoading ? (
+                        // Skeleton UI when loading
+                        <>
+                            {Array(5)
+                                .fill(0)
+                                .map((_, index) => (
+                                    <div
+                                        key={index}
+                                        className="flex w-full space-x-2 items-center h-full rounded-none p-2 first:border-t border-b"
+                                    >
+                                        <Skeleton className="h-10 w-10 rounded-full mr-4" />
+                                        <div className="flex-grow min-w-0 flex flex-col items-start space-y-2">
+                                            <div className="flex flex-row w-full justify-between">
+                                                <Skeleton className="h-4 w-1/3" />
+                                                <Skeleton className="h-3 w-12" />
+                                            </div>
+                                            <Skeleton className="h-3 w-4/5" />
+                                        </div>
+                                    </div>
+                                ))}
+                        </>
+                    ) : filteredConversations.length === 0 ? (
+                        <div className="flex-grow flex items-center justify-center select-none">
+                            <span className="text-muted-foreground">
+                                No contacts/chat found
+                            </span>
+                        </div>
+                    ) : (
+                        filteredConversations.map((conversation) => {
                             const otherUser =
                                 conversation.type === "direct"
                                     ? conversation.members.find(
@@ -193,8 +203,8 @@ export default function Sidebar() {
                                     </div>
                                 </Button>
                             );
-                        });
-                    })()}
+                        })
+                    )}
                 </ScrollArea>
             </TooltipProvider>
         </div>

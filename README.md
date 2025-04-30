@@ -1,84 +1,114 @@
-# Turborepo starter
+# Chat App Advance
 
-This Turborepo starter is maintained by the Turborepo core team.
+A modern chat application built with Next.js, tRPC, and Socket.IO in a Turborepo monorepo.
 
-## Using this example
+## Project Overview
 
-Run the following command:
-
-```sh
-npx create-turbo@latest
-```
+This project is a full-featured chat application with real-time messaging capabilities. It utilizes a monorepo structure with Turborepo to manage multiple applications and shared packages.
 
 ## What's inside?
 
-This Turborepo includes the following packages/apps:
+This Turborepo includes the following apps and packages:
 
-### Apps and Packages
+### Apps
 
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
+- `web`: A Next.js 15 application with a modern UI built using Radix UI, Tailwind CSS, and React 19. This is the main client interface for the chat application.
+- `socket`: A Socket.IO server for handling real-time communication. Built with Express and runs with tsx.
 
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
+### Packages
 
-### Utilities
+- `@repo/api`: tRPC API definitions shared between client and server
+- `@repo/auth`: Authentication utilities using NextAuth.js
+- `@repo/database`: Database client and schema definitions using Drizzle ORM with PostgreSQL
+- `@repo/typescript-config`: Shared TypeScript configurations
 
-This Turborepo has some additional tools already setup for you:
+## Tech Stack
 
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
+- **Frontend**: Next.js 15, React 19, TailwindCSS, Radix UI
+- **API**: tRPC 11 with React Query
+- **Real-time Communication**: Socket.IO
+- **Database**: PostgreSQL with Drizzle ORM
+- **Authentication**: NextAuth.js
+- **Build Tools**: Turborepo, pnpm
+- **Code Quality**: Biome for formatting and linting
+- **Languages**: TypeScript
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js v18 or later
+- pnpm v9.0.0 or later
+- PostgreSQL
+
+### Setting Up the Development Environment
+
+1. Clone the repository
+2. Install dependencies:
+
+```
+pnpm install
+```
+
+3. Set up your environment variables:
+
+```
+cp .env.example .env
+```
+
+Then edit `.env` with your configuration details.
+
+4. Start the database (if using Docker):
+
+```
+# in wsl or linux
+./start-database.sh
+```
+
+5. Push the database schema:
+
+```
+pnpm db:push
+```
+
+### Development
+
+To develop all apps and packages, run the following command:
+
+```
+pnpm dev
+```
 
 ### Build
 
 To build all apps and packages, run the following command:
 
 ```
-cd my-turborepo
 pnpm build
 ```
 
-### Develop
+### Database Tasks
 
-To develop all apps and packages, run the following command:
+- Generate migrations: `pnpm db:generate`
+- Apply migrations: `pnpm db:migrate`
+- View database with UI: `pnpm db:studio`
+- Push schema changes: `pnpm db:push`
 
-```
-cd my-turborepo
-pnpm dev
-```
+## Useful Commands
 
-### Remote Caching
-
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
-
-Turborepo can use a technique known as [Remote Caching](https://turbo.build/repo/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-```
-cd my-turborepo
-npx turbo login
-```
-
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
-
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-```
-npx turbo link
-```
+- `pnpm format-and-lint` - Check formatting and linting across all packages
+- `pnpm format-and-lint:fix` - Fix formatting and linting issues across all packages
+- `pnpm typecheck` - Type check all packages
+- `pnpm clean` - Clean build artifacts and node_modules
 
 ## Useful Links
 
-Learn more about the power of Turborepo:
+Learn more about the technologies used:
 
-- [Tasks](https://turbo.build/repo/docs/core-concepts/monorepos/running-tasks)
-- [Caching](https://turbo.build/repo/docs/core-concepts/caching)
-- [Remote Caching](https://turbo.build/repo/docs/core-concepts/remote-caching)
-- [Filtering](https://turbo.build/repo/docs/core-concepts/monorepos/filtering)
-- [Configuration Options](https://turbo.build/repo/docs/reference/configuration)
-- [CLI Usage](https://turbo.build/repo/docs/reference/command-line-reference)
+- [Next.js](https://nextjs.org/)
+- [tRPC](https://trpc.io/)
+- [Drizzle ORM](https://orm.drizzle.team/)
+- [Socket.IO](https://socket.io/)
+- [Turborepo](https://turbo.build/repo)
+- [Tailwind CSS](https://tailwindcss.com/)
+- [Radix UI](https://www.radix-ui.com/)

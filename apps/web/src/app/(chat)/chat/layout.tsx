@@ -7,9 +7,9 @@ export default function ChatLayout({
     children: React.ReactNode;
 }) {
     return (
-        <div className="grid grid-cols-[18rem_1fr] lg:grid-cols-[24rem_1fr] h-full w-full max-h-screen 2xl:w-[90dvw] 2xl:h-[80dvh]">
+        <div className="grid grid-cols-[18rem_1fr] md:grid-cols-[20rem_1fr] lg:grid-cols-[24rem_1fr] h-full w-full max-h-screen 2xl:w-[90dvw] 2xl:h-[90dvh]">
             <Sidebar />
-            <div className="max-w-[calc(100vw-18rem)] lg:max-w-[calc(100vw-24rem)]">
+            <div className="max-w-[calc(100vw-18rem)] md:max-w-[calc(100vw-20rem)] lg:max-w-[calc(100vw-24rem)] max-h-full">
                 {children}
             </div>
         </div>

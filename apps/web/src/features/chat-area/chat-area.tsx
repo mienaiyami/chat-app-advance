@@ -173,16 +173,16 @@ export function ChatArea() {
     //     }
     // }, [messages, activeConversationId, markAsRead]);
 
-    // Handle file preview
-    useLayoutEffect(() => {
-        if (selectedFile) {
-            if (selectedFile.type.startsWith("image/")) {
-                setSelectedFilePreview(URL.createObjectURL(selectedFile));
-            } else {
-                setSelectedFilePreview(null);
-            }
+    useEffect(() => {
+        if (msgInputRef.current && msgInputRef.current.scrollHeight < 100) {
+            msgInputRef.current.style.height = "auto";
+            msgInputRef.current.style.height = `${msgInputRef.current.scrollHeight}px`;
+            // if (editingMessage) {
+            //     setEditingMessage(null);
+            //     msgInputRef.current.focus();
+            // }
         }
-    }, [selectedFile]);
+    }, [newMessage]);
 
     const handleSendMessage = () => {
         if (editingMessage) {
@@ -199,15 +199,7 @@ export function ChatArea() {
                 conversationId: activeConversationId,
                 text: newMessage.trim(),
                 repliedToId: selectedForReply?.id,
-                attachment: selectedFile
-                    ? {
-                          url: URL.createObjectURL(selectedFile),
-                          name: selectedFile.name,
-                          size: selectedFile.size,
-                          fType: "file",
-                          mimeType: selectedFile.type,
-                      }
-                    : null,
+                attachment: selectedFile || null,
                 senderId: currentUser.id,
             });
             setNewMessage("");
@@ -246,8 +238,7 @@ export function ChatArea() {
 
         setSelectedFile(file);
 
-        // For image files, create a preview
-        if (file.type.startsWith("image/")) {
+        if (file.type.startsWith("image/") || file.type.startsWith("video/")) {
             const url = URL.createObjectURL(file);
             setSelectedFilePreview(url);
         } else {

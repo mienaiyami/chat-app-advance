@@ -109,7 +109,7 @@ export default function ProfileDialog() {
     };
 
     const handleSignOut = async () => {
-        await signOut({ callbackUrl: "/signin" });
+        await signOut({ callbackUrl: "/auth/signin" });
     };
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {

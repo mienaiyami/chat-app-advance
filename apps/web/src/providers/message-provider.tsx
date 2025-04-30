@@ -14,12 +14,17 @@ import { useConversation } from "./conversation-provider";
 import { useUploadThing } from "~/lib/uploadthing";
 import { useSocket } from "./socket-provider";
 import { useSession } from "next-auth/react";
-import type { MessageWithRelations } from "@repo/database";
+import type { Attachment, MessageWithRelations } from "@repo/database";
 import type { ClientToServerEvents } from "@app/socket/types";
 
 type Message = MessageWithRelations;
 
-type SendMessageParams = Parameters<ClientToServerEvents["message:send"]>[0];
+type SendMessageParams = Omit<
+    Parameters<ClientToServerEvents["message:send"]>[0],
+    "attachment"
+> & {
+    attachment?: Attachment | File | null;
+};
 
 interface MessageContextType {
     messages: Message[];
@@ -200,7 +205,7 @@ export const MessageProvider = ({
         "chatFileUploader",
         {
             onClientUploadComplete: (res) => {
-                if (res?.[0] && activeConversationId) {
+                if (res?.[0] && activeConversationId && session?.user.id) {
                     const uploadedFile = res[0];
                     const fileType =
                         uploadedFile.name.split(".").pop()?.toLowerCase() || "";
@@ -213,10 +218,43 @@ export const MessageProvider = ({
                     } else if (uploadedFile.type?.startsWith("audio/")) {
                         fType = "audio";
                     }
+
+                    if (socket && isConnected) {
+                        socket.emit("message:send", {
+                            conversationId: activeConversationId,
+                            text: uploadedFile.name,
+                            senderId: session.user.id,
+                            attachment: {
+                                url: uploadedFile.ufsUrl,
+                                name: uploadedFile.name,
+                                size: uploadedFile.size,
+                                fType,
+                                mimeType:
+                                    uploadedFile.type ||
+                                    "application/octet-stream",
+                            },
+                        });
+                    } else {
+                        sendMessageMutation.mutateAsync({
+                            conversationId: activeConversationId,
+                            text: uploadedFile.name,
+                            attachment: {
+                                url: uploadedFile.ufsUrl,
+                                name: uploadedFile.name,
+                                size: uploadedFile.size,
+                                fType,
+                                mimeType:
+                                    uploadedFile.type ||
+                                    "application/octet-stream",
+                            },
+                        });
+                    }
                 }
+                setIsSending(false);
             },
             onUploadError: (error) => {
                 toast.error(`Error uploading file: ${error.message}`);
+                setIsSending(false);
             },
         }
     );
@@ -232,12 +270,12 @@ export const MessageProvider = ({
 
             setIsSending(true);
             try {
-                // When user uploads a file via the UI
                 if (attachment && "lastModified" in attachment) {
-                    // It's a File object from browser
-                    await startUpload([attachment as unknown as File]);
+                    const file = attachment as unknown as File;
+                    await startUpload([file]);
                     return;
                 }
+
                 // Use socket if connected, otherwise use TRPC
                 if (socket && isConnected && session?.user.id) {
                     socket.emit("message:send", {

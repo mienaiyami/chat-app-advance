@@ -20,18 +20,11 @@ import { Textarea } from "~/components/ui/textarea";
 import { api } from "~/trpc/react";
 import { Avatar, AvatarFallback, AvatarImage } from "~/components/ui/avatar";
 import { ScrollArea } from "~/components/ui/scroll-area";
-import {
-    Tooltip,
-    TooltipContent,
-    TooltipTrigger,
-} from "~/components/ui/tooltip";
 import { Checkbox } from "~/components/ui/checkbox";
-import { useSession } from "next-auth/react";
 import { X } from "lucide-react";
 
 export default function CreateGroupDialog() {
     const router = useRouter();
-    const { data: session } = useSession();
     const [open, setOpen] = useState(false);
     const [groupName, setGroupName] = useState("");
     const [description, setDescription] = useState("");
@@ -118,9 +111,9 @@ export default function CreateGroupDialog() {
             }}
         >
             <DialogTrigger asChild>
-                <Button variant="outline" className="flex-1">
-                    <UsersRound className="mr-2 h-5 w-5" />
-                    <span>New Group</span>
+                <Button variant="outline" className="">
+                    <UsersRound className="h-5 w-5" />
+                    <span className="sr-only">New Group</span>
                 </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[525px]">

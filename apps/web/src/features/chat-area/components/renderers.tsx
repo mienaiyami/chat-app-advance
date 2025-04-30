@@ -9,12 +9,12 @@ export const renderers: MarkdownComponents = {
     em: ({ children }) => <em className="font-sans italic">{children}</em>,
     s: ({ children }) => <s className="line-through">{children}</s>,
     code: ({ children }) => (
-        <code className="bg-accent text-accent-foreground p-1 rounded text-sm ">
+        <code className="bg-accent text-accent-foreground p-1 rounded text-sm">
             {children}
         </code>
     ),
     pre: ({ children }) => (
-        <pre className="bg-accent text-accent-foreground p-1 rounded max-w-lg whitespace-pre overflow-x-auto">
+        <pre className="bg-accent text-accent-foreground p-1 rounded w-full max-w-lg whitespace-pre overflow-x-auto">
             {children}
         </pre>
     ),

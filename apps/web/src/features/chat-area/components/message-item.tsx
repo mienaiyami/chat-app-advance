@@ -1,7 +1,14 @@
 "use client";
 
 import { formatDistance } from "date-fns";
-import { Edit2, MoreHorizontal, Paperclip, Reply, Trash2 } from "lucide-react";
+import {
+    Download,
+    Edit2,
+    MoreHorizontal,
+    Paperclip,
+    Reply,
+    Trash2,
+} from "lucide-react";
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -67,6 +74,9 @@ export default function MessageItem({
             window.open(message.attachment.url, "_blank");
         }
     };
+    // if (message.attachment) {
+    //     console.log(message.attachment);
+    // }
 
     return (
         <div
@@ -194,27 +204,58 @@ export default function MessageItem({
                             isFirstMessage ? "mb-1" : "my-1"
                         } ${hasAttachment ? "space-y-3" : ""}`}
                     >
-                        <div className="break-words">{children}</div>
+                        <div className="break-words whitespace-pre-wrap">
+                            {children}
+                        </div>
 
                         {hasAttachment && (
                             <div className="mt-2">
-                                {message.attachment?.fType === "image" ? (
-                                    <a
-                                        href={message.attachment.url ?? ""}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="inline-block max-w-xs"
-                                    >
-                                        <img
-                                            src={message.attachment.url ?? ""}
-                                            alt={message.text}
-                                            className="max-h-60 rounded-md object-cover"
-                                        />
-                                    </a>
+                                {["image", "video"].includes(
+                                    message.attachment?.fType || ""
+                                ) ? (
+                                    <div className="flex w-full max-w-sm relative">
+                                        <Button
+                                            asChild
+                                            size="icon"
+                                            variant="secondary"
+                                            className="size-8 absolute top-2 right-2"
+                                        >
+                                            <a
+                                                href={
+                                                    message.attachment?.url ??
+                                                    ""
+                                                }
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                            >
+                                                <Download className="size-4" />
+                                            </a>
+                                        </Button>
+                                        {message.attachment?.fType ===
+                                        "image" ? (
+                                            <img
+                                                src={
+                                                    message.attachment.url ?? ""
+                                                }
+                                                alt={message.text}
+                                                className="max-h-60 rounded-md object-cover"
+                                            />
+                                        ) : (
+                                            <video
+                                                src={
+                                                    message.attachment?.url ??
+                                                    ""
+                                                }
+                                                controls
+                                                className="max-h-60 rounded-md object-cover"
+                                            />
+                                        )}
+                                    </div>
                                 ) : (
-                                    <button
+                                    <Button
                                         onClick={handleOpenAttachment}
-                                        className="flex items-center gap-2 p-2 bg-accent hover:bg-accent/80 rounded-md text-sm"
+                                        variant="ghost"
+                                        className="flex w-full items-center gap-2 p-2 bg-accent hover:bg-accent/80 rounded-md text-sm"
                                     >
                                         <Paperclip className="h-4 w-4" />
                                         <span className="truncate max-w-[200px]">
@@ -228,7 +269,7 @@ export default function MessageItem({
                                                   )})`
                                                 : ""}
                                         </span>
-                                    </button>
+                                    </Button>
                                 )}
                             </div>
                         )}

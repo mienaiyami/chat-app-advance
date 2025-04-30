@@ -73,9 +73,9 @@ export default function AddContactDialog() {
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                <Button variant="outline" className="flex-1">
-                    <UserPlus className="mr-2 h-5 w-5" />
-                    <span>Add Contact</span>
+                <Button variant="outline" className="ml-auto">
+                    <UserPlus className="h-5 w-5" />
+                    <span className="sr-only">Add Contact</span>
                 </Button>
             </DialogTrigger>
             <DialogContent className="cursor-default">

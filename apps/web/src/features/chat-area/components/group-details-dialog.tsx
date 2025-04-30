@@ -37,7 +37,6 @@ import { toast } from "sonner";
 import { useSession } from "next-auth/react";
 import { useDialog } from "~/hooks/use-dialog";
 import { GroupDetailsEditDialog } from "./group-details-edit-dialog";
-import { Alert, AlertDescription } from "~/components/ui/alert";
 
 type GroupDetailsDialogProps = {
     conversationId: string;
@@ -79,6 +78,7 @@ export function GroupDetailsDialog({
                 conversationDetails.type === "group" &&
                 !conversationDetails.isPrivate,
             retry: false,
+            refetchOnWindowFocus: false,
         }
     );
 

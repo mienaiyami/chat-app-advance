@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { User, Moon, Sun, LogOut, Loader2, Upload } from "lucide-react";
+import { User, Moon, Sun, LogOut, Loader2, Upload, X } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import {
     Dialog,
@@ -29,7 +29,6 @@ import {
     SelectValue,
 } from "~/components/ui/select";
 import { useTheme } from "next-themes";
-import { useRouter } from "next/navigation";
 import { useUploadThing } from "~/lib/uploadthing";
 
 export default function ProfileDialog() {
@@ -37,6 +36,8 @@ export default function ProfileDialog() {
     const [open, setOpen] = useState(false);
     const [userName, setUserName] = useState("");
     const [avatarUrl, setAvatarUrl] = useState("");
+    const [selectedFile, setSelectedFile] = useState<File | null>(null);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [isUploading, setIsUploading] = useState(false);
     const { theme, setTheme } = useTheme();
     const utils = api.useUtils();
@@ -49,27 +50,27 @@ export default function ProfileDialog() {
             enabled: open,
         });
 
-    const { startUpload, isUploading: isUploadingAvatar } = useUploadThing(
-        "avatarUploader",
-        {
-            onClientUploadComplete: (res) => {
-                if (res?.[0]) {
-                    setAvatarUrl(res[0].ufsUrl);
-                    setIsUploading(false);
-                    toast.success("Avatar uploaded successfully");
-                }
-            },
-            onUploadError: (error) => {
-                toast.error(`Error uploading avatar: ${error.message}`);
+    const { startUpload } = useUploadThing("avatarUploader", {
+        onClientUploadComplete: (res) => {
+            if (res?.[0]) {
+                setAvatarUrl(res[0].ufsUrl);
                 setIsUploading(false);
-            },
-        }
-    );
+                toast.success("Avatar uploaded successfully");
+            }
+        },
+        onUploadError: (error) => {
+            toast.error(`Error uploading avatar: ${error.message}`);
+            setIsUploading(false);
+        },
+    });
 
     const updateProfile = api.user.updateProfile.useMutation({
         onSuccess: () => {
             toast.success("Profile updated successfully");
             utils.user.current.invalidate();
+            // Clear local file state after successful update
+            setSelectedFile(null);
+            setPreviewUrl(null);
         },
         onError: (error) => {
             toast.error(error.message || "Failed to update profile");
@@ -96,16 +97,41 @@ export default function ProfileDialog() {
         }
     }, [currentUser]);
 
-    const handleUpdateProfile = () => {
+    useEffect(() => {
+        if (selectedFile) {
+            const url = URL.createObjectURL(selectedFile);
+            setPreviewUrl(url);
+
+            return () => URL.revokeObjectURL(url);
+        }
+    }, [selectedFile]);
+
+    const handleUpdateProfile = async () => {
         if (!userName.trim()) {
             toast.error("Name cannot be empty");
             return;
         }
 
-        updateProfile.mutate({
-            name: userName.trim(),
-            ...(avatarUrl.trim() && { image: avatarUrl.trim() }),
-        });
+        try {
+            let finalAvatarUrl = avatarUrl;
+
+            if (selectedFile) {
+                setIsUploading(true);
+                const uploadResult = await startUpload([selectedFile]);
+
+                if (uploadResult?.[0]) {
+                    finalAvatarUrl = uploadResult[0].ufsUrl;
+                }
+            }
+
+            updateProfile.mutate({
+                name: userName.trim(),
+                ...(finalAvatarUrl.trim() && { image: finalAvatarUrl.trim() }),
+            });
+        } catch (error) {
+            setIsUploading(false);
+            toast.error("Failed to upload avatar");
+        }
     };
 
     const handleSignOut = async () => {
@@ -126,11 +152,17 @@ export default function ProfileDialog() {
             return;
         }
 
-        setIsUploading(true);
-        startUpload([file]);
+        setSelectedFile(file);
+    };
+
+    const clearSelectedFile = () => {
+        setSelectedFile(null);
+        setPreviewUrl(null);
     };
 
     const isLoading = isLoadingUser || isLoadingSettings;
+
+    const displayAvatar = previewUrl || avatarUrl || "";
 
     return (
         <Dialog open={open} onOpenChange={setOpen}>
@@ -168,7 +200,7 @@ export default function ProfileDialog() {
                             <>
                                 <div className="flex justify-center mb-6">
                                     <Avatar className="h-24 w-24">
-                                        <AvatarImage src={avatarUrl || ""} />
+                                        <AvatarImage src={displayAvatar} />
                                         <AvatarFallback>
                                             {userName
                                                 ?.slice(0, 2)
@@ -199,29 +231,40 @@ export default function ProfileDialog() {
                                         <Label htmlFor="avatar">
                                             Profile Picture
                                         </Label>
-                                        <div className="flex gap-2 items-end">
+                                        <div className="flex gap-2 items-center">
                                             <Input
                                                 id="avatar"
                                                 type="file"
-                                                className="flex-1"
+                                                className="w-full py-1.5"
                                                 accept="image/*"
                                                 onChange={handleFileUpload}
-                                                disabled={
-                                                    isUploading ||
-                                                    isUploadingAvatar
-                                                }
+                                                disabled={isUploading}
                                             />
-                                            {(isUploading ||
-                                                isUploadingAvatar) && (
-                                                <div className="flex items-center">
-                                                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                                                    <span className="text-sm">
-                                                        Uploading...
-                                                    </span>
-                                                </div>
+                                            {selectedFile && (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    onClick={clearSelectedFile}
+                                                >
+                                                    <X className="h-4 w-4" />
+                                                </Button>
                                             )}
                                         </div>
-                                        {avatarUrl && (
+                                        {isUploading && (
+                                            <div className="flex items-center mt-2">
+                                                <Loader2 className="size-4 animate-spin mr-2" />
+                                                <span className="text-sm">
+                                                    Uploading...
+                                                </span>
+                                            </div>
+                                        )}
+                                        {previewUrl && (
+                                            <div className="text-sm text-muted-foreground mt-1">
+                                                New avatar selected (will be
+                                                uploaded when you save)
+                                            </div>
+                                        )}
+                                        {!previewUrl && avatarUrl && (
                                             <div className="text-sm text-muted-foreground break-all mt-1">
                                                 Current: {avatarUrl}
                                             </div>
@@ -232,11 +275,11 @@ export default function ProfileDialog() {
                                         onClick={handleUpdateProfile}
                                         disabled={
                                             updateProfile.isPending ||
-                                            isUploading ||
-                                            isUploadingAvatar
+                                            isUploading
                                         }
                                     >
-                                        {updateProfile.isPending && (
+                                        {(updateProfile.isPending ||
+                                            isUploading) && (
                                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                         )}
                                         Save Profile

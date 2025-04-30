@@ -11,7 +11,7 @@ import {
 } from "~/components/ui/dialog";
 import { Input } from "~/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "~/components/ui/avatar";
-import { Search, Loader2 } from "lucide-react";
+import { Search, Loader2, X } from "lucide-react";
 import { Label } from "~/components/ui/label";
 import { ScrollArea, ScrollBar } from "~/components/ui/scroll-area";
 import { DialogDescription } from "@radix-ui/react-dialog";
@@ -44,28 +44,27 @@ export function GroupDetailsEditDialog({
     const debouncedSearchQuery = useDebounce(searchQuery, 500);
     const [groupName, setGroupName] = useState("");
     const [displayPicture, setDisplayPicture] = useState<string | null>(null);
+    const [selectedFile, setSelectedFile] = useState<File | null>(null);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [isUploading, setIsUploading] = useState(false);
     const { data: session } = useSession();
     const currentUserId = session?.user?.id;
 
     const utils = api.useUtils();
 
-    const { startUpload, isUploading: isUploadingAvatar } = useUploadThing(
-        "avatarUploader",
-        {
-            onClientUploadComplete: (res) => {
-                if (res?.[0]) {
-                    setDisplayPicture(res[0].ufsUrl);
-                    setIsUploading(false);
-                    toast.success("Group avatar uploaded successfully");
-                }
-            },
-            onUploadError: (error) => {
-                toast.error(`Error uploading avatar: ${error.message}`);
+    const { startUpload } = useUploadThing("avatarUploader", {
+        onClientUploadComplete: (res) => {
+            if (res?.[0]) {
+                setDisplayPicture(res[0].ufsUrl);
                 setIsUploading(false);
-            },
-        }
-    );
+                toast.success("Group avatar uploaded successfully");
+            }
+        },
+        onUploadError: (error) => {
+            toast.error(`Error uploading avatar: ${error.message}`);
+            setIsUploading(false);
+        },
+    });
 
     const searchUsersQuery = api.user.search.useQuery(
         { query: debouncedSearchQuery },
@@ -110,9 +109,20 @@ export function GroupDetailsEditDialog({
             setGroupName("");
             setSelectedUsers([]);
             setDisplayPicture(null);
+            setSelectedFile(null);
+            setPreviewUrl(null);
             setSearchQuery("");
         }
     }, [open]);
+
+    useEffect(() => {
+        if (selectedFile) {
+            const url = URL.createObjectURL(selectedFile);
+            setPreviewUrl(url);
+
+            return () => URL.revokeObjectURL(url);
+        }
+    }, [selectedFile]);
 
     const filteredUsers =
         searchUsersQuery.data?.filter(
@@ -142,32 +152,52 @@ export function GroupDetailsEditDialog({
             return;
         }
 
-        setIsUploading(true);
-        startUpload([file]);
+        setSelectedFile(file);
+        setDisplayPicture(null);
     };
 
-    const handleEditGroup = () => {
+    const clearSelectedFile = () => {
+        setSelectedFile(null);
+        setPreviewUrl(null);
+    };
+
+    const handleEditGroup = async () => {
+        if (isUploading) return;
+
         const updates: {
-            id: string;
+            conversationId: string;
             name?: string;
             image?: string;
         } = {
-            id: conversationId,
+            conversationId,
         };
 
         if (groupName) updates.name = groupName;
-        if (displayPicture) updates.image = displayPicture;
-        if (selectedUsers.length > 0) {
-            addMemberMutation.mutate({
-                conversationId,
-                userIds: selectedUsers.map((user) => user.id),
-            });
-        }
 
-        editGroupMutation.mutate({
-            conversationId,
-            ...updates,
-        });
+        try {
+            if (selectedFile) {
+                setIsUploading(true);
+                const uploadResult = await startUpload([selectedFile]);
+
+                if (uploadResult?.[0]) {
+                    updates.image = uploadResult[0].ufsUrl;
+                }
+            } else if (displayPicture) {
+                updates.image = displayPicture;
+            }
+
+            if (selectedUsers.length > 0) {
+                addMemberMutation.mutate({
+                    conversationId,
+                    userIds: selectedUsers.map((user) => user.id),
+                });
+            }
+
+            editGroupMutation.mutate(updates);
+        } catch (error) {
+            setIsUploading(false);
+            toast.error("Failed to upload image");
+        }
     };
 
     return (
@@ -192,22 +222,42 @@ export function GroupDetailsEditDialog({
                         Avatar
                         <Input
                             type="file"
-                            className="w-full"
+                            className="w-full py-1.5"
                             accept="image/*"
                             onChange={handleFileUpload}
-                            disabled={isUploading || isUploadingAvatar}
+                            disabled={isUploading}
                         />
-                        {(isUploading || isUploadingAvatar) && (
-                            <div className="flex items-center mt-1">
+                        {isUploading && (
+                            <div className="flex items-center">
                                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
                                 <span className="text-sm">Uploading...</span>
                             </div>
                         )}
                     </Label>
-                    {displayPicture && (
+                    {previewUrl && (
                         <div className="flex flex-row items-center px-4 gap-4">
                             <div className="mb-2 flex justify-center">
-                                <Avatar className="w-16 h-16">
+                                <Avatar className="size-16">
+                                    <AvatarImage
+                                        src={previewUrl}
+                                        alt="Group avatar preview"
+                                    />
+                                    <AvatarFallback>GP</AvatarFallback>
+                                </Avatar>
+                            </div>
+                            <Button
+                                variant="ghost"
+                                onClick={clearSelectedFile}
+                                size="icon"
+                            >
+                                <X className="size-4" />
+                            </Button>
+                        </div>
+                    )}
+                    {!previewUrl && displayPicture && (
+                        <div className="flex flex-row items-center px-4 gap-4">
+                            <div className="mb-2 flex justify-center">
+                                <Avatar className="size-16">
                                     <AvatarImage
                                         src={displayPicture}
                                         alt="Group avatar"
@@ -220,8 +270,9 @@ export function GroupDetailsEditDialog({
                                 onClick={() => {
                                     setDisplayPicture(null);
                                 }}
+                                size="icon"
                             >
-                                Clear
+                                <X className="size-4" />
                             </Button>
                         </div>
                     )}
@@ -230,12 +281,12 @@ export function GroupDetailsEditDialog({
                         Add Members
                         <div className="relative w-full">
                             <Input
-                                className="w-full"
+                                className="w-full pl-8"
                                 placeholder="Search users..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
-                            <Search className="text-muted-foreground absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+                            <Search className="h-4 w-4 text-muted-foreground absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
                         </div>
                     </Label>
                     {selectedUsers.length > 0 && (
@@ -351,6 +402,8 @@ export function GroupDetailsEditDialog({
                                 setGroupName("");
                                 setSelectedUsers([]);
                                 setDisplayPicture(null);
+                                setSelectedFile(null);
+                                setPreviewUrl(null);
                             }}
                         >
                             Cancel
@@ -358,15 +411,9 @@ export function GroupDetailsEditDialog({
                     </DialogClose>
                     <Button
                         onClick={handleEditGroup}
-                        disabled={
-                            editGroupMutation.isPending ||
-                            isUploading ||
-                            isUploadingAvatar
-                        }
+                        disabled={editGroupMutation.isPending || isUploading}
                     >
-                        {editGroupMutation.isPending ||
-                        isUploading ||
-                        isUploadingAvatar
+                        {editGroupMutation.isPending || isUploading
                             ? "Saving..."
                             : "Save"}
                     </Button>

@@ -52,10 +52,10 @@ export default function Home() {
                     )}
                     {status === "authenticated" && (
                         <Link
-                            href="/dashboard"
+                            href="/chat"
                             className="rounded-full bg-blue-500 px-10 py-3 font-semibold text-white no-underline transition hover:bg-blue-600"
                         >
-                            Go to Dashboard
+                            Go to Chat
                         </Link>
                     )}
                     {status === "loading" && (

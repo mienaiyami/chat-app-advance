@@ -10,6 +10,7 @@ import ChatHeader from "./components/chat-header";
 import MessageList from "./components/message-list";
 import MessageInput from "./components/message-input";
 import ReplyIndicator from "./components/reply-indicator";
+import { Skeleton } from "~/components/ui/skeleton";
 
 import type { RouterOutputs } from "~/trpc/react";
 type Message = RouterOutputs["message"]["getMessages"]["messages"][number];
@@ -41,6 +42,8 @@ export function ChatArea() {
             enabled: !!activeConversationId,
         }
     );
+
+    const isLoadingMembers = membersQuery.isLoading;
     const membersMap = new Map(membersQuery.data?.map((m) => [m.id, m]) || []);
 
     const chatOpened = conversations.find(
@@ -126,20 +129,28 @@ export function ChatArea() {
 
     return (
         <div className="h-full flex-1 flex flex-col border rounded-r-lg border-l-0 max-h-screen">
-            <ChatHeader
-                chatOpened={chatOpened}
-                currentUser={currentUser}
-                isChatMuted={isChatMuted}
-                membersMap={membersMap}
-            />
+            {isLoadingMembers ? (
+                <ChatHeaderSkeleton />
+            ) : (
+                <ChatHeader
+                    chatOpened={chatOpened}
+                    currentUser={currentUser}
+                    isChatMuted={isChatMuted}
+                    membersMap={membersMap}
+                />
+            )}
 
-            <MessageList
-                currentUser={currentUser}
-                isCurrentUserAdmin={isCurrentUserAdmin}
-                onEditStart={handleEditStart}
-                onReply={handleReply}
-                selectedForReply={selectedForReply}
-            />
+            {isLoadingMembers ? (
+                <MessageListSkeleton />
+            ) : (
+                <MessageList
+                    currentUser={currentUser}
+                    isCurrentUserAdmin={isCurrentUserAdmin}
+                    onEditStart={handleEditStart}
+                    onReply={handleReply}
+                    selectedForReply={selectedForReply}
+                />
+            )}
 
             {selectedForReply && (
                 <ReplyIndicator
@@ -162,6 +173,68 @@ export function ChatArea() {
                 onCancelReply={handleCancelReply}
                 onTyping={handleTyping}
             />
+        </div>
+    );
+}
+
+function ChatHeaderSkeleton() {
+    return (
+        <div className="border-b px-4 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+                <Skeleton className="h-10 w-10 rounded-full" />
+                <div className="flex flex-col gap-1">
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-3 w-20" />
+                </div>
+            </div>
+            <div className="flex gap-1">
+                <Skeleton className="h-8 w-8 rounded-full" />
+                <Skeleton className="h-8 w-8 rounded-full" />
+            </div>
+        </div>
+    );
+}
+
+function MessageListSkeleton() {
+    const skeletonItems = Array.from({ length: 5 }).map((_, i) => ({
+        id: `skeleton-message-${i}-${Math.random().toString(36).substr(2, 9)}`,
+        // isLeft: i % 2 === 0,
+    }));
+
+    return (
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
+            {skeletonItems.map((item) => (
+                <div
+                    key={item.id}
+                    className={`flex ${
+                        // item.isLeft ? "justify-start" : "justify-end"
+                        "justify-start"
+                    }`}
+                >
+                    <div
+                        className={`flex ${
+                            // item.isLeft ? "flex-row" : "flex-row-reverse"
+                            "flex-row"
+                        } items-start gap-2 max-w-[80%]`}
+                    >
+                        <Skeleton className="h-9 w-9 rounded-full flex-shrink-0" />
+                        <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-2">
+                                <Skeleton className="h-4 w-24" />
+                                <Skeleton className="h-3 w-14" />
+                            </div>
+                            <Skeleton
+                                className={`h-16 w-full min-w-40 rounded-md ${
+                                    // item.isLeft
+                                    //     ? "rounded-tl-none"
+                                    //     : "rounded-tr-none"
+                                    "rounded-sm"
+                                }`}
+                            />
+                        </div>
+                    </div>
+                </div>
+            ))}
         </div>
     );
 }

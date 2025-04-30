@@ -170,7 +170,12 @@ export default function Sidebar() {
                                             <span className="font-medium truncate">
                                                 {displayName}
                                             </span>
-                                            <span className="ml-auto font-xs text-muted-foreground">
+                                            <span
+                                                className="ml-auto font-xs text-muted-foreground"
+                                                title={String(
+                                                    conversation.lastMessageAt
+                                                )}
+                                            >
                                                 {conversation.lastMessageAt
                                                     ? formatDate(
                                                           conversation.lastMessageAt

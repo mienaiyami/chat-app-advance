@@ -18,6 +18,7 @@ import { ScrollArea } from "~/components/ui/scroll-area";
 import { api } from "~/trpc/react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { TooltipContent, TooltipTrigger } from "~/components/ui/tooltip";
 
 export default function AddContactDialog() {
     const router = useRouter();
@@ -72,12 +73,18 @@ export default function AddContactDialog() {
 
     return (
         <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-                <Button variant="outline" className="ml-auto">
-                    <UserPlus className="h-5 w-5" />
-                    <span className="sr-only">Add Contact</span>
-                </Button>
-            </DialogTrigger>
+            <TooltipTrigger asChild>
+                <DialogTrigger asChild>
+                    <Button variant="outline" className="ml-auto">
+                        <UserPlus className="h-5 w-5" />
+
+                        <span className="sr-only">Add Contact</span>
+                    </Button>
+                </DialogTrigger>
+            </TooltipTrigger>
+            <TooltipContent>
+                <p>Add Contact</p>
+            </TooltipContent>
             <DialogContent className="cursor-default">
                 <DialogHeader>
                     <DialogTitle>Add Contact</DialogTitle>

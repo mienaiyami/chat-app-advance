@@ -6,7 +6,12 @@ import { Input } from "~/components/ui/input";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "~/components/ui/avatar";
 import { Search, VolumeOff } from "lucide-react";
-import { TooltipProvider } from "~/components/ui/tooltip";
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "~/components/ui/tooltip";
 import { api } from "~/trpc/react";
 import { useConversation } from "~/providers/conversation-provider";
 import { formatDate } from "~/lib/utils";
@@ -59,10 +64,16 @@ export default function Sidebar() {
                 disableHoverableContent
                 skipDelayDuration={500}
             >
-                <div className="p-4 border-b h-18 flex flex-row gap-1">
-                    <ProfileDialog />
-                    <AddContactDialog />
-                    <CreateGroupDialog />
+                <div className="p-4 border-b h-16 flex flex-row gap-1">
+                    <Tooltip>
+                        <ProfileDialog />
+                    </Tooltip>
+                    <Tooltip>
+                        <AddContactDialog />
+                    </Tooltip>
+                    <Tooltip>
+                        <CreateGroupDialog />
+                    </Tooltip>
                 </div>
                 <div className="p-2 relative">
                     <Search

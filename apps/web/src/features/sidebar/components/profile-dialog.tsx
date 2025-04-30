@@ -30,6 +30,11 @@ import {
 } from "~/components/ui/select";
 import { useTheme } from "next-themes";
 import { useUploadThing } from "~/lib/uploadthing";
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+} from "~/components/ui/tooltip";
 
 export default function ProfileDialog() {
     const { data: session } = useSession();
@@ -166,17 +171,23 @@ export default function ProfileDialog() {
 
     return (
         <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-                <Button variant="ghost" className="h-9 w-9 ">
-                    <Avatar className="h-9 w-9">
-                        <AvatarImage src={avatarUrl || ""} />
-                        <AvatarFallback>
-                            {userName?.slice(0, 2).toUpperCase() || "?"}
-                        </AvatarFallback>
-                    </Avatar>
-                    <span className="sr-only">Profile</span>
-                </Button>
-            </DialogTrigger>
+            <TooltipTrigger asChild>
+                <DialogTrigger asChild>
+                    <Button variant="ghost" className="h-9 w-9 ">
+                        <Avatar className="h-9 w-9">
+                            <AvatarImage src={avatarUrl || ""} />
+                            <AvatarFallback>
+                                {userName?.slice(0, 2).toUpperCase() || "?"}
+                            </AvatarFallback>
+                        </Avatar>
+                        <span className="sr-only">Profile</span>
+                    </Button>
+                </DialogTrigger>
+            </TooltipTrigger>
+
+            <TooltipContent>
+                <p>Profile</p>
+            </TooltipContent>
             <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
                     <DialogTitle>User Profile</DialogTitle>

@@ -22,6 +22,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "~/components/ui/avatar";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Checkbox } from "~/components/ui/checkbox";
 import { X } from "lucide-react";
+import { TooltipContent } from "~/components/ui/tooltip";
+import { TooltipTrigger } from "~/components/ui/tooltip";
 
 export default function CreateGroupDialog() {
     const router = useRouter();
@@ -110,12 +112,17 @@ export default function CreateGroupDialog() {
                 if (!isOpen) resetForm();
             }}
         >
-            <DialogTrigger asChild>
-                <Button variant="outline" className="">
-                    <UsersRound className="h-5 w-5" />
-                    <span className="sr-only">New Group</span>
-                </Button>
-            </DialogTrigger>
+            <TooltipTrigger asChild>
+                <DialogTrigger asChild>
+                    <Button variant="outline" className="">
+                        <UsersRound className="h-5 w-5" />
+                        <span className="sr-only">New Group</span>
+                    </Button>
+                </DialogTrigger>
+            </TooltipTrigger>
+            <TooltipContent>
+                <p>New Group</p>
+            </TooltipContent>
             <DialogContent className="sm:max-w-[525px]">
                 <DialogHeader>
                     <DialogTitle>Create a Group Chat</DialogTitle>

@@ -46,6 +46,7 @@ const MessageInput = ({
             msgInputRef.current.style.height = "auto";
             msgInputRef.current.style.height = `${msgInputRef.current.scrollHeight}px`;
         }
+        // msgInputRef.current?.focus();
     }, [newMessage]);
 
     useEffect(() => {
@@ -63,9 +64,8 @@ const MessageInput = ({
                 const url = URL.createObjectURL(selectedFile);
                 setSelectedFilePreview(url);
                 return () => URL.revokeObjectURL(url);
-            } else {
-                setSelectedFilePreview(null);
             }
+            setSelectedFilePreview(null);
         }
     }, [selectedFile]);
 

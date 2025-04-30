@@ -5,50 +5,48 @@ import { auth } from "@repo/auth";
 import { Inter } from "next/font/google";
 import { SessionProvider, SocketProvider } from "~/components";
 import { ThemeProvider } from "~/components/theme/theme-provider";
+import { Toaster } from "~/components/ui/sonner";
 import { env } from "~/env";
 import { TRPCReactProvider } from "~/trpc/react";
 import { api } from "~/trpc/server";
-import { Toaster } from "~/components/ui/sonner";
 
 const inter = Inter({
-    subsets: ["latin"],
-    variable: "--font-sans",
+	subsets: ["latin"],
+	variable: "--font-sans",
 });
 
 export const metadata = {
-    title: "Chat App",
-    description: "A modern chat application",
-    icons: [{ rel: "icon", url: "/favicon.ico" }],
+	title: "Chat App",
+	description: "A modern chat application",
+	icons: [{ rel: "icon", url: "/favicon.ico" }],
 };
 
 export default async function RootLayout({
-    children,
+	children,
 }: {
-    children: React.ReactNode;
+	children: React.ReactNode;
 }) {
-    const session = await auth();
-    // const users = await api.user.search({
-    //     query: "@",
-    // });
-    // console.log(users[0]);
+	const session = await auth();
+	// const users = await api.user.search({
+	//     query: "@",
+	// });
+	// console.log(users[0]);
 
-    return (
-        <html lang="en" suppressHydrationWarning>
-            <body className={`font-sans ${inter.variable}`}>
-                <TRPCReactProvider>
-                    <ThemeProvider
-                        attribute="class"
-                        defaultTheme="system"
-                        enableSystem
-                        disableTransitionOnChange
-                    >
-                        <SessionProvider session={session}>
-                            {children}
-                        </SessionProvider>
-                        <Toaster richColors />
-                    </ThemeProvider>
-                </TRPCReactProvider>
-            </body>
-        </html>
-    );
+	return (
+		<html lang="en" suppressHydrationWarning>
+			<body className={`font-sans ${inter.variable}`}>
+				<TRPCReactProvider>
+					<ThemeProvider
+						attribute="class"
+						defaultTheme="system"
+						enableSystem
+						disableTransitionOnChange
+					>
+						<SessionProvider session={session}>{children}</SessionProvider>
+						<Toaster richColors />
+					</ThemeProvider>
+				</TRPCReactProvider>
+			</body>
+		</html>
+	);
 }

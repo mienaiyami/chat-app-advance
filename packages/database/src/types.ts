@@ -1,9 +1,9 @@
 import type {
-    conversationMembers,
-    conversations,
-    messages,
-    users,
-    userSettings,
+	conversationMembers,
+	conversations,
+	messages,
+	userSettings,
+	users,
 } from "./schema";
 
 export type UserSettings = typeof userSettings.$inferSelect;
@@ -22,18 +22,18 @@ export type Message = typeof messages.$inferSelect;
 export type MessageInsert = typeof messages.$inferInsert;
 
 export type MessageWithRelations = Message & {
-    sender: {
-        id: string;
-        name: string | null;
-        image: string | null;
-    };
-    repliedTo:
-        | (Message & {
-              sender: {
-                  id: string;
-                  name: string | null;
-                  image: string | null;
-              };
-          })
-        | null;
+	sender: {
+		id: string;
+		name: string | null;
+		image: string | null;
+	};
+	repliedTo:
+		| (Message & {
+				sender: {
+					id: string;
+					name: string | null;
+					image: string | null;
+				};
+		  })
+		| null;
 };

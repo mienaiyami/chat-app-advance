@@ -4,9 +4,7 @@ import { useState, useCallback, useEffect } from "react";
 import { useMessage } from "~/providers/message-provider";
 import { useConversation } from "~/providers/conversation-provider";
 import { useSession } from "next-auth/react";
-import { toast } from "sonner";
 import { api } from "~/trpc/react";
-import { useSocket } from "~/providers/socket-provider";
 
 import ChatHeader from "./components/chat-header";
 import MessageList from "./components/message-list";
@@ -19,7 +17,6 @@ type ConversationWithMembers = RouterOutputs["conversation"]["getAll"][number];
 
 export function ChatArea() {
     const { data: session } = useSession();
-    const { typingUsers, onlineUsers } = useSocket();
     const {
         sendMessage,
         editMessage,
@@ -53,58 +50,6 @@ export function ChatArea() {
     const currentUserMembership = currentUser && membersMap.get(currentUser.id);
     const isChatMuted = currentUserMembership?.muted || false;
     const isCurrentUserAdmin = currentUserMembership?.role === "admin";
-
-    const clearChatMutation = api.conversation.clearChat.useMutation({
-        onSuccess: () => {
-            toast.success("Chat cleared successfully");
-        },
-        onError: (error) => {
-            toast.error(error.message || "Failed to clear chat");
-        },
-    });
-
-    const leaveGroupMutation = api.conversation.leave.useMutation({
-        onSuccess: () => {
-            toast.success("Left group successfully");
-        },
-        onError: (error) => {
-            toast.error(error.message || "Failed to leave group");
-        },
-    });
-
-    const removeMemberMutation = api.conversation.removeMember.useMutation({
-        onSuccess: () => {
-            toast.success("Member removed successfully");
-        },
-        onError: (error) => {
-            toast.error(error.message || "Failed to remove member");
-        },
-    });
-
-    const updateContactMutation = api.user.updateContact.useMutation({
-        onSuccess: () => {
-            toast.success("Contact updated successfully");
-        },
-        onError: (error) => {
-            toast.error(error.message || "Failed to update contact");
-        },
-    });
-
-    const utils = api.useUtils();
-    const updateMutedChatMutation = api.user.updateMutedChat.useMutation({
-        onSuccess: () => {
-            toast.success("Chat preference updated");
-            // Invalidate the members query to refresh the muted status
-            if (activeConversationId) {
-                utils.user.getMembers.invalidate({
-                    conversationId: activeConversationId,
-                });
-            }
-        },
-        onError: (error) => {
-            toast.error(error.message || "Failed to update chat preference");
-        },
-    });
 
     // Reset state when changing conversations
     useEffect(() => {
@@ -169,32 +114,6 @@ export function ChatArea() {
         setSelectedForReply(null);
     }, []);
 
-    const handleClearChat = useCallback(() => {
-        if (activeConversationId) {
-            clearChatMutation.mutate({ conversationId: activeConversationId });
-        }
-    }, [activeConversationId, clearChatMutation]);
-
-    const handleLeaveGroup = useCallback(() => {
-        if (activeConversationId) {
-            leaveGroupMutation.mutate({ conversationId: activeConversationId });
-        }
-    }, [activeConversationId, leaveGroupMutation]);
-
-    const handleUpdateContact = useCallback(
-        (userId: string, action: "add" | "remove") => {
-            updateContactMutation.mutate({ userId, action });
-        },
-        [updateContactMutation]
-    );
-
-    const handleUpdateMutedChat = useCallback(
-        (chatId: string, muted: boolean) => {
-            updateMutedChatMutation.mutate({ conversationId: chatId, muted });
-        },
-        [updateMutedChatMutation]
-    );
-
     if (!chatOpened) {
         return (
             <div className="h-full flex-1 grid place-items-center select-none border rounded-r-lg border-l-0 max-h-screen">
@@ -211,13 +130,7 @@ export function ChatArea() {
                 chatOpened={chatOpened}
                 currentUser={currentUser}
                 isChatMuted={isChatMuted}
-                typingUsers={typingUsers}
-                onlineUsers={onlineUsers}
                 membersMap={membersMap}
-                onClearChat={handleClearChat}
-                onLeaveGroup={handleLeaveGroup}
-                onUpdateMutedChat={handleUpdateMutedChat}
-                onUpdateContact={handleUpdateContact}
             />
 
             <MessageList

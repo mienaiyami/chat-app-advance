@@ -78,13 +78,12 @@ export default function Sidebar() {
                 </div>
                 <ScrollArea className="flex-grow">
                     {isLoading || userSettings.isLoading ? (
-                        // Skeleton UI when loading
                         <>
                             {Array(5)
                                 .fill(0)
                                 .map((_, index) => (
                                     <div
-                                        key={index}
+                                        key={String(index)}
                                         className="flex w-full space-x-2 items-center h-full rounded-none p-2 first:border-t border-b"
                                     >
                                         <Skeleton className="h-10 w-10 rounded-full mr-4" />
@@ -99,7 +98,7 @@ export default function Sidebar() {
                                 ))}
                         </>
                     ) : filteredConversations.length === 0 ? (
-                        <div className="flex-grow flex items-center justify-center select-none">
+                        <div className="flex flex-grow select-none items-center justify-center">
                             <span className="text-muted-foreground">
                                 No contacts/chat found
                             </span>

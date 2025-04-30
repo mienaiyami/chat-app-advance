@@ -40,11 +40,13 @@ import { GroupDetailsEditDialog } from "./group-details-edit-dialog";
 
 type GroupDetailsDialogProps = {
     conversationId: string;
+    onLeaveGroup: () => void;
     onClose: () => void;
 };
 
 export function GroupDetailsDialog({
     conversationId,
+    onLeaveGroup,
     onClose,
 }: GroupDetailsDialogProps) {
     const [searchQuery, setSearchQuery] = useState("");
@@ -392,7 +394,7 @@ export function GroupDetailsDialog({
                         />
                     </div>
                 )}
-                <Button variant="destructive" onClick={onClose}>
+                <Button variant="destructive" onClick={onLeaveGroup}>
                     Leave Group
                 </Button>
             </div>

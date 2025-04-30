@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "~/components/ui/avatar";
 import { Button } from "~/components/ui/button";
 import {
@@ -19,7 +19,9 @@ import {
 import { MoreHorizontal } from "lucide-react";
 import { GroupDetailsDialog } from "./group-details-dialog";
 import { memo } from "react";
-import type { RouterOutputs } from "~/trpc/react";
+import { api, type RouterOutputs } from "~/trpc/react";
+import { toast } from "sonner";
+import { useSocket } from "~/components";
 
 type ConversationWithMembers = RouterOutputs["conversation"]["getAll"][number];
 type MemberInfo = { id: string; name: string | null; role: string | null };
@@ -28,26 +30,14 @@ type ChatHeaderProps = {
     chatOpened: ConversationWithMembers;
     currentUser: { id: string; name?: string | null } | undefined;
     isChatMuted: boolean;
-    typingUsers: Map<string, string[]>;
-    onlineUsers: string[];
     membersMap: Map<string, MemberInfo>;
-    onClearChat: () => void;
-    onLeaveGroup: () => void;
-    onUpdateMutedChat: (chatId: string, muted: boolean) => void;
-    onUpdateContact: (userId: string, action: "add" | "remove") => void;
 };
 
 const ChatHeader = ({
     chatOpened,
     currentUser,
     isChatMuted,
-    typingUsers,
-    onlineUsers,
     membersMap,
-    onClearChat,
-    onLeaveGroup,
-    onUpdateMutedChat,
-    onUpdateContact,
 }: ChatHeaderProps) => {
     const [clearChatDialogOpen, setClearChatDialogOpen] = useState(false);
     const [leaveGroupDialogOpen, setLeaveGroupDialogOpen] = useState(false);
@@ -63,6 +53,87 @@ const ChatHeader = ({
             ? chatOpened.image
             : chatOpened.members.find((m) => m.userId !== currentUser?.id)?.user
                   .image;
+    const activeConversationId = chatOpened.id;
+
+    const { typingUsers, onlineUsers } = useSocket();
+
+    // const removeMemberMutation = api.conversation.removeMember.useMutation({
+    //     onSuccess: () => {
+    //         toast.success("Member removed successfully");
+    //     },
+    //     onError: (error) => {
+    //         toast.error(error.message || "Failed to remove member");
+    //     },
+    // });
+
+    const updateContactMutation = api.user.updateContact.useMutation({
+        onSuccess: () => {
+            toast.success("Contact updated successfully");
+        },
+        onError: (error) => {
+            toast.error(error.message || "Failed to update contact");
+        },
+    });
+    const clearChatMutation = api.conversation.clearChat.useMutation({
+        onSuccess: () => {
+            toast.success("Chat cleared successfully");
+        },
+        onError: (error) => {
+            toast.error(error.message || "Failed to clear chat");
+        },
+    });
+
+    const utils = api.useUtils();
+    const updateMutedChatMutation = api.user.updateMutedChat.useMutation({
+        onSuccess: () => {
+            toast.success("Chat preference updated");
+            // Invalidate the members query to refresh the muted status
+            if (activeConversationId) {
+                utils.user.getMembers.invalidate({
+                    conversationId: activeConversationId,
+                });
+            }
+        },
+        onError: (error) => {
+            toast.error(error.message || "Failed to update chat preference");
+        },
+    });
+    const leaveGroupMutation = api.conversation.leave.useMutation({
+        onSuccess: () => {
+            toast.success("Left group successfully");
+        },
+        onError: (error) => {
+            toast.error(error.message || "Failed to leave group");
+        },
+    });
+    const handleClearChat = useCallback(() => {
+        if (activeConversationId) {
+            clearChatMutation.mutate({ conversationId: activeConversationId });
+        }
+    }, [activeConversationId, clearChatMutation]);
+
+    const handleUpdateMutedChat = useCallback(
+        (chatId: string, muted: boolean) => {
+            updateMutedChatMutation.mutate({ conversationId: chatId, muted });
+        },
+        [updateMutedChatMutation]
+    );
+
+    const handleLeaveGroup = useCallback(() => {
+        if (activeConversationId) {
+            leaveGroupMutation.mutate({ conversationId: activeConversationId });
+        }
+    }, [activeConversationId, leaveGroupMutation]);
+
+    const handleUpdateContact = useCallback(
+        (userId: string, action: "add" | "remove") => {
+            updateContactMutation.mutate({ userId, action });
+        },
+        [updateContactMutation]
+    );
+    const typingUsersList = Array.from(typingUsers.values())
+        .flatMap((ids) => ids.map((id) => membersMap.get(id)?.name || ""))
+        .filter(Boolean);
 
     return (
         <div className="p-4 border-b flex justify-between items-center h-18">
@@ -76,19 +147,20 @@ const ChatHeader = ({
                 <div>
                     <h2 className="font-bold">{chatName}</h2>
                     <p className="text-xs text-muted-foreground">
-                        {typingUsers.size > 0 &&
+                        {typingUsersList.length > 0 &&
                             `${new Intl.ListFormat("en").format(
-                                Array.from(typingUsers.values()).flatMap(
-                                    (ids) =>
-                                        ids.map(
-                                            (id) =>
-                                                membersMap.get(id)?.name || ""
-                                        )
-                                )
+                                typingUsersList
                             )} is typing...`}
-                        {typingUsers.size === 0 &&
+                        {typingUsersList.length === 0 &&
                             (chatOpened.type === "direct"
-                                ? onlineUsers.some((c) => c === currentUser?.id)
+                                ? onlineUsers.some(
+                                      (c) =>
+                                          c ===
+                                          chatOpened.members.find(
+                                              (m) =>
+                                                  m.userId !== currentUser?.id
+                                          )?.user.id
+                                  )
                                     ? "Online"
                                     : chatOpened.name?.includes(" (Unknown)")
                                     ? ""
@@ -128,7 +200,7 @@ const ChatHeader = ({
                                                         currentUser?.id
                                                 );
                                             if (otherMember) {
-                                                onUpdateContact(
+                                                handleUpdateContact(
                                                     otherMember.userId,
                                                     "add"
                                                 );
@@ -161,7 +233,7 @@ const ChatHeader = ({
                         <DropdownMenuItem
                             onClick={() => {
                                 if (chatOpened) {
-                                    onUpdateMutedChat(
+                                    handleUpdateMutedChat(
                                         chatOpened.id,
                                         !isChatMuted
                                     );
@@ -191,7 +263,7 @@ const ChatHeader = ({
                             <DialogClose asChild>
                                 <Button
                                     variant="destructive"
-                                    onClick={onClearChat}
+                                    onClick={handleClearChat}
                                 >
                                     Clear
                                 </Button>
@@ -218,7 +290,7 @@ const ChatHeader = ({
                             <DialogClose asChild>
                                 <Button
                                     variant="destructive"
-                                    onClick={onLeaveGroup}
+                                    onClick={handleLeaveGroup}
                                 >
                                     Leave
                                 </Button>
@@ -233,6 +305,7 @@ const ChatHeader = ({
                     <GroupDetailsDialog
                         conversationId={chatOpened.id}
                         onClose={() => setGroupDetailsDialogOpen(false)}
+                        onLeaveGroup={handleLeaveGroup}
                     />
                 </Dialog>
             </div>

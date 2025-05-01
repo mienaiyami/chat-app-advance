@@ -27,17 +27,13 @@ import {
     formatFileSize,
 } from "~/lib/utils";
 import type { MessageWithStatus } from "~/providers/message-provider";
+import UserDetailsDialog from "./user-details-dialog";
 
 interface MessageItemProps {
     message: MessageWithStatus;
     isFirstMessage: boolean;
     isCurrentUser: boolean;
     isCurrentUserAdmin: boolean;
-    sender: {
-        id: string;
-        name: string | null;
-        image: string | null;
-    };
     onReply: () => void;
     onEdit?: () => void;
     onDelete?: () => void;
@@ -50,7 +46,6 @@ export default function MessageItem({
     isFirstMessage,
     isCurrentUser,
     isCurrentUserAdmin,
-    sender,
     onReply,
     onEdit,
     onDelete,
@@ -149,41 +144,45 @@ export default function MessageItem({
                             </div>
                         </div>
                     )}
-                    <div className="flex items-center">
-                        <Avatar className="mr-2 h-8 w-8">
-                            <AvatarImage
-                                src={sender.image || ""}
-                                alt={sender.name || ""}
-                            />
-                            <AvatarFallback>
-                                {(sender.name || "").slice(0, 2).toUpperCase()}
-                            </AvatarFallback>
-                        </Avatar>
-                        <div className="flex flex-row items-center gap-2">
-                            <h3 className="font-semibold text-sm">
-                                {sender.name}
-                            </h3>
-                            <Tooltip delayDuration={500}>
-                                <TooltipTrigger asChild>
-                                    <span className="text-muted-foreground text-xs">
-                                        {isSending
-                                            ? "Sending..."
-                                            : isError
-                                            ? "Failed to send"
-                                            : formattedTimestamp}
-                                    </span>
-                                </TooltipTrigger>
-                                <TooltipContent className="px-2 py-1 text-xs">
+                    <div className="flex items-center gap-2">
+                        <UserDetailsDialog userId={message.senderId}>
+                            <div className="flex cursor-pointer items-center gap-2">
+                                <Avatar className="h-8 w-8">
+                                    <AvatarImage
+                                        src={message.sender.image || ""}
+                                        alt={message.sender.name || ""}
+                                    />
+                                    <AvatarFallback>
+                                        {(message.sender.name || "")
+                                            .slice(0, 2)
+                                            .toUpperCase()}
+                                    </AvatarFallback>
+                                </Avatar>
+                                <h3 className="font-semibold text-sm transition-colors hover:text-primary">
+                                    {isCurrentUser
+                                        ? "You"
+                                        : message.sender.name}
+                                </h3>
+                            </div>
+                        </UserDetailsDialog>
+                        <Tooltip delayDuration={500}>
+                            <TooltipTrigger asChild>
+                                <span className="text-muted-foreground text-xs">
                                     {isSending
-                                        ? "Message is being sent..."
+                                        ? "Sending..."
                                         : isError
-                                        ? "Message failed to send"
-                                        : `${formatDateLong(
-                                              message.createdAt
-                                          )}`}
-                                </TooltipContent>
-                            </Tooltip>
-                        </div>
+                                        ? "Failed to send"
+                                        : formattedTimestamp}
+                                </span>
+                            </TooltipTrigger>
+                            <TooltipContent className="px-2 py-1 text-xs">
+                                {isSending
+                                    ? "Message is being sent..."
+                                    : isError
+                                    ? "Message failed to send"
+                                    : `${formatDateLong(message.createdAt)}`}
+                            </TooltipContent>
+                        </Tooltip>
                     </div>
                 </div>
             )}
@@ -218,7 +217,7 @@ export default function MessageItem({
                             isFirstMessage ? "mb-1" : "my-1",
                             hasAttachment ? "space-y-3" : "",
                             isSending
-                                ? "outline outline-muted outline-dashed"
+                                ? "outline outline-dashed outline-muted"
                                 : "",
                             isError ? "border border-destructive" : "",
                             isEdited ? "mb-0.5" : ""

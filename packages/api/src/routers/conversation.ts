@@ -167,6 +167,13 @@ export const conversationRouter = createTRPCRouter({
         )
         .mutation(async ({ ctx, input }) => {
             const userId = ctx.session.user.id;
+            if (userId === input.targetUserId) {
+                throw new TRPCError({
+                    code: "BAD_REQUEST",
+                    message:
+                        "You cannot create a conversation with yourself yet. Coming soon!",
+                });
+            }
 
             const existingConversation = await ctx.db.transaction(
                 async (tx) => {
@@ -200,7 +207,6 @@ export const conversationRouter = createTRPCRouter({
                         );
 
                     if (conversationsWithBothUsers.length === 0) return null;
-
                     for (const {
                         conversationId,
                     } of conversationsWithBothUsers) {
@@ -211,20 +217,7 @@ export const conversationRouter = createTRPCRouter({
                                     eq(conversations.type, "direct")
                                 ),
                             });
-
-                        if (!conversation) continue;
-
-                        const memberCount = await tx
-                            .select({ count: sql<number>`count(*)` })
-                            .from(conversationMembers)
-                            .where(
-                                eq(
-                                    conversationMembers.conversationId,
-                                    conversationId
-                                )
-                            );
-
-                        if (memberCount[0]?.count === 2) {
+                        if (conversation)
                             return await tx.query.conversations.findFirst({
                                 where: eq(conversations.id, conversationId),
                                 with: {
@@ -236,17 +229,14 @@ export const conversationRouter = createTRPCRouter({
                                     creator: MEMBER_SELECT,
                                 },
                             });
-                        }
                     }
 
                     return null;
                 }
             );
-
             if (existingConversation) {
                 return existingConversation;
             }
-
             return await ctx.db.transaction(async (tx) => {
                 const [newConversation] = await tx
                     .insert(conversations)
@@ -511,6 +501,42 @@ export const conversationRouter = createTRPCRouter({
                 return unreadCount[0]?.count ?? 0;
             });
         }),
+
+    getMemberDetails: protectedProcedure
+        .input(z.object({ conversationId: z.string(), userId: z.string() }))
+        .query(async ({ ctx, input }) => {
+            const userId = ctx.session.user.id;
+
+            const details = await ctx.db
+                .select({
+                    role: conversationMembers.role,
+                    joinedAt: conversationMembers.joinedAt,
+                    name: users.name,
+                    image: users.image,
+                    email: users.email,
+                    userId: users.id,
+                })
+                .from(conversationMembers)
+                .leftJoin(users, eq(conversationMembers.userId, users.id))
+                .where(
+                    and(
+                        eq(
+                            conversationMembers.conversationId,
+                            input.conversationId
+                        ),
+                        eq(conversationMembers.userId, input.userId)
+                    )
+                );
+
+            if (!details[0]) {
+                throw new TRPCError({
+                    code: "NOT_FOUND",
+                    message: "Member not found",
+                });
+            }
+            return details[0];
+        }),
+
     getMembers: protectedProcedure
         .input(z.object({ conversationId: z.string() }))
         .query(async ({ ctx, input }) => {

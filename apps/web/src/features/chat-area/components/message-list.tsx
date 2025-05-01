@@ -160,7 +160,6 @@ const MessageList = ({
                             !!message.repliedTo ||
                             (i > 0 && arr[i - 1]?.senderId !== message.senderId)
                         }
-                        sender={message.sender}
                         isCurrentUser={currentUser?.id === message.senderId}
                         isCurrentUserAdmin={isCurrentUserAdmin}
                         onEdit={() => onEditStart(message)}
